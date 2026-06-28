@@ -1074,7 +1074,8 @@ function signOut() {
 function _clearAllUserData() {
   const _uid = myID || '';
   // localStorage 全クリア（UID別キー含む）
-  const keysToRemove = ['umiLastUID','umiV5','umiProfile','umiPtHistory','umiThanks','umiGuestRecs','umiIcon','umiGuestUID','umiMigrationDone'];
+  // umiMigrationDone と umiLastUID は残す（再ログイン時に移行が再実行されるのを防ぐ）
+  const keysToRemove = ['umiV5','umiProfile','umiPtHistory','umiThanks','umiGuestRecs','umiIcon','umiGuestUID'];
   keysToRemove.forEach(k => localStorage.removeItem(k));
   if (_uid) {
     ['umiProfile_','umiPtHistory_','umiThanks_'].forEach(prefix =>
@@ -1396,7 +1397,9 @@ auth.onAuthStateChanged(async user => {
     const lastUID = localStorage.getItem('umiLastUID');
     if (lastUID && lastUID !== user.uid && !user.isAnonymous) {
       const wasGuestUID = lastUID === (localStorage.getItem('umiGuestUID') || '');
-      if (!wasGuestUID && !localStorage.getItem('umiMigrationDone')) {
+      const migrationDone = localStorage.getItem('umiMigrationDone');
+      // 移行済みフラグがない（ゲストから切り替えた直後）はリセットしない
+      if (!wasGuestUID && migrationDone) {
         myID = user.uid;
         _clearAllUserData();
         myID = user.uid;
