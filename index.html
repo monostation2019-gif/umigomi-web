@@ -2725,8 +2725,18 @@ function openM(id){
   const wx=r.wx?`<div class="drow"><div class="dl">気象</div><div class="dv">${r.wx.icon} ${r.wx.temp}°C 風${r.wx.wind}m/s 湿${r.wx.hum}%</div></div>`:'';
   const collInfo = r.collected&&r.collectorName ? `<div class="drow"><div class="dl">回収者</div><div class="dv">👤 ${r.collectorName}（${r.collectorId||''}）</div></div>` : '';
   const collPhotoHTML = r.collectPhoto ? `<div class="drow"><div class="dl">回収写真</div><div class="dv"><img src="${r.collectPhoto}" style="width:100%;border-radius:8px;margin-top:4px;"></div></div>` : '';
-  // 回収ptを ptHistory から計算
-  const collPts = ptHistory.filter(p=>p.recId&&(p.recId===id+'_coll'||p.recId===id+'_coop')).reduce((s,p)=>s+p.pts,0);
+  // 回収ptをrのフィールドから直接計算（ptHistoryは自分のデータのみのため他ユーザー回収分が取れない問題を解消）
+  let collPts = 0;
+  let collPtDetail = '';
+  if (r.collected) {
+    const isSelfCollect = r.collectorId === r.uid; // 自分で回収 or 他人が回収
+    const baseCollPt = isSelfCollect ? PT.SELF_COLLECT : PT.OTHER_COLLECT;
+    const bonus = r.collectPhoto ? PT.COLLECT_PHOTO_BONUS : PT.COLLECT_NOPHOTO_BONUS;
+    collPts = baseCollPt + bonus;
+    const baseLabel = isSelfCollect ? `自己回収 +${baseCollPt}pt` : `他者回収 +${baseCollPt}pt`;
+    const bonusLabel = r.collectPhoto ? `写真ボーナス +${bonus}pt` : `写真なし +${bonus}pt`;
+    collPtDetail = `${baseLabel} ／ ${bonusLabel}`;
+  }
   const totalPts = (r.pts||0) + collPts;
   document.getElementById('mDetails').innerHTML=`
     <div class="drow"><div class="dl">ステータス</div><div class="dv">${r.collected?'✅ 回収済':'⚠️ 未回収'}</div></div>
@@ -2735,7 +2745,7 @@ function openM(id){
     <div class="drow"><div class="dl">記録日時</div><div class="dv">${r.date}</div></div>
     ${collInfo}${collPhotoHTML}${wx}
     ${r.memo?`<div class="drow"><div class="dl">メモ</div><div class="dv">${r.memo}</div></div>`:''}
-    <div class="drow"><div class="dl">登録pt</div><div class="dv" style="color:var(--amber)">${r.pts||0} pt${collPts>0?` ＋ 回収 +${collPts}pt = <strong>${totalPts}pt</strong>`:''}</div></div>`;
+    <div class="drow"><div class="dl">登録pt</div><div class="dv" style="color:var(--amber)">${r.pts||0} pt${collPts>0?` ＋ 回収 +${collPts}pt = <strong>${totalPts}pt</strong><br><span style="font-size:10px;color:var(--gray)">${collPtDetail}</span>`:''}</div></div>`;
   document.getElementById('mCollBtn').style.display=r.collected?'none':'block';
   document.getElementById('modalBg').classList.add('on');
 }
