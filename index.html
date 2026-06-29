@@ -3006,7 +3006,17 @@ function goTab(t){
   document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
   document.getElementById('scr-'+t).classList.add('on');
   document.getElementById('tab-'+t).classList.add('on');
-  if (t === 'survey') updateSurveyTimestamp();
+  if (t === 'survey') {
+    updateSurveyTimestamp();
+    // iframeが初回表示時にLeafletがサイズを認識できるよう遅延src再セット
+    const ifr = document.getElementById('poisute-iframe');
+    if (ifr && !ifr.dataset.loaded) {
+      ifr.dataset.loaded = '1';
+      const srcVal = ifr.src;
+      ifr.src = '';
+      setTimeout(() => { ifr.src = srcVal; }, 50);
+    }
+  }
   if(t==='map'){
     // iOS Safari: display:flex になった直後はまだoffsetWidth=0なので遅延initが必要
     requestAnimationFrame(() => {
