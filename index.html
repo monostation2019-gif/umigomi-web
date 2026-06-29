@@ -840,13 +840,19 @@ select.pf-input optgroup{background:var(--navy3);color:var(--teal);font-size:11p
 
 <!-- ===== 調査報告（ポイ捨てマップ 伊勢版） ===== -->
 <div class="scr" id="scr-survey" style="flex-direction:column;">
-  <div style="background:var(--navy2);border-bottom:1px solid rgba(14,165,160,.2);padding:10px 14px;flex-shrink:0;">
-    <div style="font-size:13px;font-weight:700;color:var(--teal);letter-spacing:1px;">🗺️ ポイ捨てマップ 伊勢版</div>
-    <div style="font-size:10px;color:var(--gray);margin-top:2px;">管理者専用 — ポイ捨てホットスポット調査報告</div>
+  <div style="background:var(--navy2);border-bottom:1px solid rgba(14,165,160,.2);padding:8px 14px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
+    <div>
+      <div style="font-size:12px;font-weight:700;color:var(--teal);letter-spacing:1px;">🗺️ ポイ捨てマップ 伊勢版</div>
+      <div style="font-size:9px;color:var(--gray);margin-top:1px;">ポイ捨てホットスポット調査報告</div>
+    </div>
+    <div id="poisuteUpdateInfo" style="font-size:9px;color:var(--gray);text-align:right;">
+      <div>最終更新</div>
+      <div id="surveyLastUpdated" style="color:var(--teal);font-weight:700;">—</div>
+    </div>
   </div>
   <iframe
     id="poisute-iframe"
-    src="poisute-map-ise.html"
+    src="poisute-map-ise.html?view=map"
     style="flex:1;border:none;width:100%;min-height:0;"
     allow="geolocation"
     title="ポイ捨てマップ 伊勢版"
@@ -3000,6 +3006,7 @@ function goTab(t){
   document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
   document.getElementById('scr-'+t).classList.add('on');
   document.getElementById('tab-'+t).classList.add('on');
+  if (t === 'survey') updateSurveyTimestamp();
   if(t==='map'){
     // iOS Safari: display:flex になった直後はまだoffsetWidth=0なので遅延initが必要
     requestAnimationFrame(() => {
@@ -4225,6 +4232,40 @@ getGPS();
       window.scrollTo(0, 0);
     }, 100);
   });
+
+  // ポイ捨てマップ更新日表示
+  function updateSurveyTimestamp() {
+    try {
+      const ts = localStorage.getItem('poisuteIse_lastUpdated');
+      const el = document.getElementById('surveyLastUpdated');
+      if (el) {
+        if (ts) {
+          const d = new Date(ts);
+          el.textContent = d.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        } else {
+          el.textContent = '未記録';
+        }
+      }
+      // 記録件数もタブラベルに反映
+      const recs = JSON.parse(localStorage.getItem('poisuteIse_v1') || '[]');
+      const tabEl = document.getElementById('tab-survey');
+      if (tabEl && recs.length > 0) {
+        const ti = tabEl.querySelector('.ti');
+        if (ti) ti.textContent = '🗺️';
+        // バッジ表示
+        let badge = tabEl.querySelector('.survey-badge');
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'survey-badge';
+          badge.style.cssText = 'font-size:8px;background:var(--teal);color:var(--navy);border-radius:8px;padding:1px 4px;margin-top:1px;font-weight:700;';
+          tabEl.appendChild(badge);
+        }
+        badge.textContent = recs.length + '件';
+      }
+    } catch(e) {}
+  }
+  // 初回チェック
+  updateSurveyTimestamp();
 })();
 
 </script>

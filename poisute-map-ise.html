@@ -73,35 +73,38 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font-body); back
 header {
   background: var(--ocean-mid);
   border-bottom: 1px solid var(--border);
-  padding: 0 12px;
-  height: 52px;
-  display: flex; align-items: center; gap: 10px;
+  padding: 0 8px;
+  height: 48px;
+  display: flex; align-items: center; gap: 6px;
   flex-shrink: 0; z-index: 1000;
+  overflow: hidden;
 }
-.logo-icon { font-size: 20px; }
-header h1 { font-size: 14px; font-weight: 700; letter-spacing: .04em; color: var(--seafoam); }
-header .sub { font-size: 10px; color: var(--text-dim); }
-.header-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.logo-icon { font-size: 18px; flex-shrink: 0; }
+.hdr-title-wrap { flex-shrink: 0; min-width: 0; }
+header h1 { font-size: 13px; font-weight: 700; letter-spacing: .02em; color: var(--seafoam); white-space: nowrap; }
+header .sub { font-size: 9px; color: var(--text-dim); white-space: nowrap; }
+.header-actions { margin-left: auto; display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
 .btn-icon {
   background: var(--surface); border: 1px solid var(--border);
-  color: var(--text); border-radius: 6px; padding: 5px 9px;
+  color: var(--text); border-radius: 6px; padding: 4px 7px;
   font-size: 11px; cursor: pointer; transition: background .15s;
-  display: flex; align-items: center; gap: 3px; white-space: nowrap;
+  display: flex; align-items: center; gap: 2px; white-space: nowrap; flex-shrink: 0;
 }
 .btn-icon:hover { background: var(--teal); }
-.btn-icon.lock { border-color: rgba(224,92,58,.4); color: var(--coral); }
+.btn-icon.lock { border-color: rgba(224,92,58,.4); color: var(--coral); padding: 4px 8px; }
 .btn-icon.lock:hover { background: rgba(224,92,58,.2); }
 
 /* WEATHER BADGE */
 #weather-badge {
-  display: flex; align-items: center; gap: 5px;
+  display: flex; align-items: center; gap: 4px;
   background: rgba(47,184,172,.12); border: 1px solid var(--border);
-  border-radius: 8px; padding: 4px 8px; flex-shrink: 0; cursor: default;
+  border-radius: 6px; padding: 3px 6px; flex-shrink: 0; cursor: default;
+  max-width: 120px; overflow: hidden;
 }
-.wx-icon { font-size: 16px; line-height: 1; }
-.wx-info { display: flex; flex-direction: column; }
-.wx-main { font-size: 11px; font-weight: 700; color: var(--text); line-height: 1.2; }
-.wx-sub  { font-size: 9px; color: var(--text-dim); line-height: 1.3; white-space: nowrap; }
+.wx-icon { font-size: 14px; line-height: 1; flex-shrink: 0; }
+.wx-info { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.wx-main { font-size: 10px; font-weight: 700; color: var(--text); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wx-sub  { font-size: 9px; color: var(--text-dim); line-height: 1.2; white-space: nowrap; display: none; }
 
 /* MAP CONTAINER */
 #map-wrap { position: relative; flex: 1; }
@@ -357,9 +360,9 @@ textarea { resize: vertical; min-height: 60px; }
 <div id="mainApp">
   <header>
     <span class="logo-icon">🗺️</span>
-    <div>
+    <div class="hdr-title-wrap">
       <h1>ポイ捨てマップ</h1>
-      <span class="sub">伊勢版 — 管理者専用</span>
+      <span class="sub">伊勢版 管理者専用</span>
     </div>
     <div class="header-actions">
       <div id="weather-badge" title="気象情報">
@@ -500,15 +503,39 @@ textarea { resize: vertical; min-height: 60px; }
 <div id="toast"></div>
 
 <script>
+// ===== VIEW MODE =====
+// ?view=map で地図のみモード（ログイン不要・操作不可・読み取り専用）
+const VIEW_MODE = new URLSearchParams(location.search).get('view');
+const MAP_ONLY = VIEW_MODE === 'map';
+
 // ===== AUTH =====
 // パスワード: umiadmin2025 (admin.htmlと共通)
 const ADMIN_PASS_HASH = 'f604b4c96d23319e76a29b1a3bc00b8f651603ec1ab25055c7c5ec4374e7d092';
 
 function isLoggedIn() {
-  return sessionStorage.getItem('poisute_admin_ok') === '1';
+  return MAP_ONLY || sessionStorage.getItem('poisute_admin_ok') === '1';
 }
 
 (function init() {
+  if (MAP_ONLY) {
+    // 地図のみモード: ログイン画面を隠し、ヘッダー・FAB・フォームを非表示にして地図を表示
+    document.getElementById('loginScreen').style.display = 'none';
+    const app = document.getElementById('mainApp');
+    app.style.display = 'flex';
+    // ヘッダーを「閲覧モード」バナーに置き換える
+    const hdr = app.querySelector('header');
+    if (hdr) {
+      hdr.innerHTML = '<span style="font-size:15px">🗺️</span><div style="font-size:12px;font-weight:700;color:var(--seafoam);">ポイ捨てマップ 伊勢版</div><div style="margin-left:auto;font-size:10px;color:var(--text-dim);background:rgba(47,184,172,.12);border:1px solid var(--border);border-radius:5px;padding:3px 8px;">📖 閲覧モード</div>';
+    }
+    initMap();
+    fetchWeather();
+    // FAB非表示
+    setTimeout(() => {
+      const fab = document.getElementById('fab');
+      if (fab) fab.style.display = 'none';
+    }, 100);
+    return;
+  }
   if (isLoggedIn()) {
     showApp();
   } else {
@@ -804,6 +831,8 @@ function submitRecord() {
 
 function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+  // 更新日時を共有キーに書き込む（index.htmlから参照可能）
+  localStorage.setItem('poisuteIse_lastUpdated', new Date().toISOString());
 }
 
 // ===== LIST MODAL =====

@@ -58,17 +58,26 @@ body{
 
 header{
   background:var(--navy2);border-bottom:2px solid var(--teal);
-  padding:12px 20px;display:flex;align-items:center;
+  padding:8px 12px;display:flex;align-items:center;
   justify-content:space-between;
   position:sticky;top:0;z-index:200;
+  gap:8px;
 }
-.hdr-title{font-size:16px;font-weight:700;color:var(--teal);letter-spacing:1px;}
-.hdr-sub{font-size:10px;color:var(--gray);margin-top:1px;}
+.hdr-title{font-size:14px;font-weight:700;color:var(--teal);letter-spacing:.5px;white-space:nowrap;}
+.hdr-sub{font-size:9px;color:var(--gray);margin-top:1px;}
+.hdr-left{flex-shrink:0;min-width:0;}
+.hdr-right{display:flex;gap:6px;align-items:center;flex-shrink:0;}
 .logout-btn{
   background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);
   color:var(--red);border-radius:8px;
-  padding:7px 14px;font-size:12px;font-weight:700;
-  cursor:pointer;font-family:inherit;
+  padding:6px 10px;font-size:11px;font-weight:700;
+  cursor:pointer;font-family:inherit;white-space:nowrap;
+}
+.map-btn{
+  background:rgba(26,122,138,.18);border:1px solid rgba(47,184,172,.4);
+  color:#2fb8ac;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;
+  cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:4px;
+  font-family:inherit;white-space:nowrap;
 }
 
 .main{padding:16px;max-width:860px;margin:0 auto;}
@@ -246,18 +255,13 @@ header{
 <!-- ===== 管理画面 ===== -->
 <div id="adminScreen">
   <header>
-    <div>
+    <div class="hdr-left">
       <div class="hdr-title">🛠️ 管理者ページ</div>
       <div class="hdr-sub" id="adminEmail">—</div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <a href="poisute-map-ise.html" target="_blank" style="
-        background:rgba(26,122,138,.18);border:1px solid rgba(47,184,172,.4);
-        color:#2fb8ac;border-radius:8px;padding:7px 13px;font-size:12px;font-weight:700;
-        cursor:pointer;text-decoration:none;display:flex;align-items:center;gap:5px;
-        font-family:inherit;
-      ">🗺️ ポイ捨てマップ（伊勢版）</a>
-      <button class="logout-btn" onclick="doLogout()">🚪 ロック</button>
+    <div class="hdr-right">
+      <a href="poisute-map-ise.html" target="_blank" class="map-btn">🗺️ ポイ捨てマップ</a>
+      <button class="logout-btn" onclick="doLogout()">🔒 ロック</button>
     </div>
   </header>
 
@@ -271,6 +275,20 @@ header{
       <div class="stat-box"><div class="stat-n rd"  id="statRep">–</div><div class="stat-l">報告</div></div>
       <div class="stat-box"><div class="stat-n am"  id="statMsg">–</div><div class="stat-l">メッセージ</div></div>
       <div class="stat-box"><div class="stat-n gr"  id="statOth">–</div><div class="stat-l">その他</div></div>
+    </div>
+    <!-- ポイ捨てマップ更新状況 -->
+    <div id="poisuteUpdateBar" style="
+      display:none;background:rgba(26,122,138,.1);border:1px solid rgba(47,184,172,.25);
+      border-radius:10px;padding:8px 14px;margin-bottom:12px;
+      display:flex;align-items:center;gap:8px;font-size:11px;
+    ">
+      <span style="font-size:16px;">🗺️</span>
+      <div>
+        <span style="color:var(--teal);font-weight:700;">ポイ捨てマップ 伊勢版</span>
+        <span style="color:var(--gray);margin-left:8px;">最終更新: </span>
+        <span id="poisuteLastUpdated" style="color:var(--white);">—</span>
+      </div>
+      <a href="poisute-map-ise.html" target="_blank" style="margin-left:auto;color:var(--teal);font-size:11px;text-decoration:none;">開く →</a>
     </div>
 
     <!-- フィルター -->
@@ -363,6 +381,7 @@ function showAdmin() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('adminScreen').style.display = 'block';
   loadFeedbacks();
+  showPoisuteUpdate();
 }
 
 function doLogout() {
@@ -379,6 +398,25 @@ function showLoginErr(msg) {
 document.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 
 // ===== フィードバック読み込み =====
+// ポイ捨てマップの最終更新日を表示
+function showPoisuteUpdate() {
+  const ts = localStorage.getItem('poisuteIse_lastUpdated');
+  const bar = document.getElementById('poisuteUpdateBar');
+  const el = document.getElementById('poisuteLastUpdated');
+  if (ts && bar && el) {
+    const d = new Date(ts);
+    el.textContent = d.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    bar.style.display = 'flex';
+  }
+  // 記録件数も表示
+  try {
+    const recs = JSON.parse(localStorage.getItem('poisuteIse_v1') || '[]');
+    if (recs.length > 0 && el) {
+      el.textContent += '　（' + recs.length + '件登録済み）';
+    }
+  } catch(e) {}
+}
+
 async function loadFeedbacks() {
   document.getElementById('fbList').innerHTML = '<div class="loading">読み込み中...</div>';
   try {
