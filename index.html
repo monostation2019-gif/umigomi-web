@@ -233,6 +233,9 @@ h1 small{display:block;font-size:8px;font-weight:400;letter-spacing:2px;color:va
         <div style="font-weight:700;margin-top:4px;" id="profAccType">-</div>
       </div>
       <button class="btn outline full" onclick="logout()">ログアウト</button>
+      <div style="text-align:center;margin-top:18px;">
+        <button style="background:none;border:none;color:var(--gray);font-size:10px;text-decoration:underline;padding:8px;" onclick="openAdminGate()">管理者メニュー</button>
+      </div>
     </div></div>
   </div>
 </div>
@@ -288,6 +291,39 @@ h1 small{display:block;font-size:8px;font-weight:400;letter-spacing:2px;color:va
 <div class="toast" id="toast"></div>
 <div class="thanks-popup" id="thanksPopup">🙏 ありがとう！<br><span style="font-size:13px;font-weight:400;">記録してくれて感謝です</span></div>
 
+<!-- ===== 管理者パスコードゲート ===== -->
+<div class="modal-bg" id="adminGateModal">
+  <div class="modal">
+    <button class="close-x" onclick="closeModal('adminGateModal')">✕</button>
+    <h2>管理者メニュー</h2>
+    <div class="field">
+      <label>パスコードを入力してください</label>
+      <input type="password" id="adminPassInput" placeholder="パスコード">
+    </div>
+    <button class="btn full" onclick="verifyAdminPass()">確認する</button>
+  </div>
+</div>
+
+<!-- ===== 管理者パネル（データ一括リセット） ===== -->
+<div class="modal-bg" id="adminPanelModal">
+  <div class="modal">
+    <button class="close-x" onclick="closeModal('adminPanelModal')">✕</button>
+    <h2>⚠️ データ一括リセット</h2>
+    <div class="card" style="border-color:rgba(239,68,68,.5);background:rgba(239,68,68,.08);">
+      <div style="font-size:12px;color:#FCA5A5;line-height:1.6;">
+        テストで作成された記録（recs）とプロフィール（users）を<b>すべて</b>削除します。<br>
+        この操作は取り消せません。本番でユーザーが使い始めたあとは絶対に実行しないでください。
+      </div>
+    </div>
+    <div class="field" style="margin-top:12px;">
+      <label>確認のため「削除」と入力してください</label>
+      <input type="text" id="adminConfirmInput" placeholder="削除">
+    </div>
+    <button class="btn full" id="adminDeleteBtn" style="background:#EF4444;color:#fff;" onclick="deleteAllData()">全データを完全に削除する</button>
+    <div id="adminProgress" style="font-size:11px;color:var(--gray);text-align:center;margin-top:8px;"></div>
+  </div>
+</div>
+
 <script>
 /* ===================== Firebase 初期化 ===================== */
 const FIREBASE_CONFIG = {
@@ -324,6 +360,13 @@ let unsubRecords = null;
 let editingRecordId = null;
 let profilesCache = {}; // uid -> {nickname, icon}
 
+/* 管理者用パスコード（SHA-256ハッシュ化して保存。平文はソースに残らない）
+   デフォルトのパスコードは "umigomi-reset" です。
+   変更したい場合はブラウザのコンソール等で
+   crypto.subtle.digest を使い新しいパスコードのSHA-256ハッシュ(16進数)を計算し、
+   下記の値を置き換えてください。 */
+const ADMIN_PASS_HASH = '65b30ba190b0c13497258164880eef8c7a9312843df4034712ddd8c9000e4f4f';
+
 document.getElementById('oyakataMascot').src = OYAKATA_FULL_DATA;
 
 /* ===================== 認証 ===================== */
@@ -348,6 +391,81 @@ function loginGuest(){
 }
 function logout(){
   auth.signOut();
+}
+
+/* ===================== 管理者用：データ一括リセット ===================== */
+async function sha256Hex(text){
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function openAdminGate(){
+  document.getElementById('adminPassInput').value = '';
+  document.getElementById('adminGateModal').classList.add('on');
+}
+async function verifyAdminPass(){
+  const val = document.getElementById('adminPassInput').value;
+  if(!val){ showToast('パスコードを入力してください'); return; }
+  const hash = await sha256Hex(val);
+  if(hash === ADMIN_PASS_HASH){
+    closeModal('adminGateModal');
+    document.getElementById('adminConfirmInput').value = '';
+    document.getElementById('adminProgress').textContent = '';
+    document.getElementById('adminPanelModal').classList.add('on');
+  } else {
+    showToast('パスコードが違います');
+  }
+}
+async function deleteAllData(){
+  const confirmVal = document.getElementById('adminConfirmInput').value.trim();
+  if(confirmVal !== '削除'){
+    showToast('確認欄に「削除」と入力してください');
+    return;
+  }
+  if(!confirm('本当にすべての記録とプロフィールを削除しますか？\nこの操作は取り消せません。')) return;
+
+  const btn = document.getElementById('adminDeleteBtn');
+  const progress = document.getElementById('adminProgress');
+  btn.disabled = true;
+  btn.textContent = '削除中…';
+  try{
+    progress.textContent = '記録（recs）を削除中…';
+    await deleteCollectionAll('recs');
+    progress.textContent = 'プロフィール（users）を削除中…';
+    await deleteCollectionAll('users');
+
+    // ローカル状態をクリアして表示を更新
+    allRecords = [];
+    profilesCache = {};
+    if(typeof renderGrid==='function') renderGrid();
+    if(typeof renderLogList==='function') renderLogList();
+
+    // 自分のプロフィールは初期状態（親方アイコン）で作り直す
+    if(currentUser){
+      await loadProfile();
+      updateHeaderUI();
+    }
+
+    progress.textContent = '完了しました';
+    showToast('全データを削除しました。まっさらな状態になりました！');
+    setTimeout(()=>closeModal('adminPanelModal'), 800);
+  }catch(e){
+    progress.textContent = '';
+    showToast('削除に失敗しました: '+e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '全データを完全に削除する';
+  }
+}
+async function deleteCollectionAll(name){
+  const snap = await db.collection(name).get();
+  const docs = snap.docs;
+  const chunkSize = 450; // Firestoreのバッチ上限(500)に余裕を持たせる
+  for(let i=0; i<docs.length; i+=chunkSize){
+    const batch = db.batch();
+    docs.slice(i, i+chunkSize).forEach(d=>batch.delete(d.ref));
+    await batch.commit();
+  }
 }
 
 auth.onAuthStateChanged(async (user)=>{
