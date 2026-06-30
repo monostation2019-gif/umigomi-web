@@ -102,6 +102,28 @@ h1 small{display:block;font-size:8px;font-weight:400;letter-spacing:2px;color:va
 .toast.on{display:block;}
 .gomi-chip{display:inline-block;padding:4px 10px;border-radius:20px;background:var(--navy3);font-size:11px;margin:2px;border:1px solid rgba(14,165,160,.3);}
 .gomi-chip.on{background:var(--teal);color:var(--navy);}
+
+.mini-avatar{display:inline-block;width:20px;height:20px;border-radius:50%;overflow:hidden;vertical-align:middle;background:var(--navy3);text-align:center;line-height:20px;font-size:13px;}
+.mini-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
+.icon-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.icon-row .avatar{cursor:default;}
+.icon-pickbtn{background:var(--navy3);border:1px solid var(--teal);color:var(--teal);border-radius:8px;padding:8px 12px;font-size:12px;}
+.log-actions{display:flex;gap:8px;margin-top:10px;}
+.log-actions button{flex:1;background:var(--navy3);border:1px solid rgba(14,165,160,.3);color:var(--white);border-radius:8px;padding:8px;font-size:11px;display:flex;align-items:center;justify-content:center;gap:4px;}
+.log-actions button.danger{border-color:rgba(239,68,68,.5);color:#FCA5A5;}
+
+.thanks-popup{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.7);z-index:3000;
+  background:linear-gradient(135deg,var(--teal) 0%,var(--teal2) 100%);color:var(--navy);
+  padding:22px 36px;border-radius:20px;font-size:20px;font-weight:700;box-shadow:0 8px 30px rgba(0,0,0,.5);
+  opacity:0;pointer-events:none;text-align:center;}
+.thanks-popup.show{animation:thanksPop 2.2s ease forwards;}
+@keyframes thanksPop{
+  0%{opacity:0;transform:translate(-50%,-50%) scale(.7);}
+  15%{opacity:1;transform:translate(-50%,-50%) scale(1.05);}
+  25%{transform:translate(-50%,-50%) scale(1);}
+  75%{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(.95);}
+}
 </style>
 </head>
 <body>
@@ -194,6 +216,11 @@ h1 small{display:block;font-size:8px;font-weight:400;letter-spacing:2px;color:va
     <h2>プロフィール編集</h2>
     <div class="field">
       <label>アイコンを選ぶ</label>
+      <div class="icon-row">
+        <div class="avatar" id="iconPreview" style="width:54px;height:54px;font-size:26px;">👤</div>
+        <button type="button" class="icon-pickbtn" onclick="pickAlbumIcon()">📷 アルバムから選ぶ</button>
+        <input type="file" id="iconFileInput" accept="image/*" style="display:none" onchange="onIconFileSelected(event)">
+      </div>
       <div class="emoji-grid" id="emojiGrid"></div>
     </div>
     <div class="field">
@@ -212,7 +239,7 @@ h1 small{display:block;font-size:8px;font-weight:400;letter-spacing:2px;color:va
 <div class="modal-bg" id="pinModal">
   <div class="modal">
     <button class="close-x" onclick="closeModal('pinModal')">✕</button>
-    <h2>ごみを記録する</h2>
+    <h2 id="pinModalTitle">ごみを記録する</h2>
     <div class="field">
       <label>ごみの種類（複数選択可）</label>
       <div id="gomiTypes"></div>
@@ -230,6 +257,7 @@ h1 small{display:block;font-size:8px;font-weight:400;letter-spacing:2px;color:va
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="thanks-popup" id="thanksPopup">🙏 ありがとう！<br><span style="font-size:13px;font-weight:400;">記録してくれて感謝です</span></div>
 
 <script>
 /* ===================== Firebase 初期化 ===================== */
@@ -249,7 +277,7 @@ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e=>console.warn(
 
 /* ===================== 定数 ===================== */
 const EMOJIS = ['😀','😎','🐢','🐬','🦀','🐚','🌊','⛵','🏖️','🦞','🐡','🦑','😺','🐶','🦊','🐼','🌟','🍀'];
-const GOMI_TYPES = ['ペットボトル','プラ容器','レジ袋','空き缶','タバコ吸殻','釣り糸/網','発泡スチロール','ガラス片','金属くず','衣類/布','流木以外の木','その他'];
+const GOMI_TYPES = ['ペットボトル','プラ容器','プラスチック片','レジ袋','空き缶','タバコ吸殻','釣り糸/網','発泡スチロール','ガラス片','金属くず','衣類/布','流木以外の木','その他'];
 const ISE_CENTER = [34.4858, 136.7197]; // 伊勢付近
 
 let currentUser = null;
@@ -260,6 +288,8 @@ let pendingLatLng = null;
 let selectedGomiTypes = [];
 let allRecords = [];
 let unsubRecords = null;
+let editingRecordId = null;
+let profilesCache = {}; // uid -> {nickname, icon}
 
 /* ===================== 認証 ===================== */
 function loginGoogle(){
@@ -311,13 +341,24 @@ async function loadProfile(){
       userProfile = { nickname: currentUser.isAnonymous ? 'ゲスト'+currentUser.uid.slice(0,4) : (currentUser.displayName||'名無し'), message:'', icon:'👤' };
       await db.collection('users').doc(currentUser.uid).set(userProfile, {merge:true});
     }
+    profilesCache[currentUser.uid] = { nickname:userProfile.nickname, icon:userProfile.icon };
   }catch(e){ console.warn('profile load failed', e); }
 }
 
+/* アイコンは絵文字 or 画像data URLのどちらにも対応 */
+function avatarContent(icon){
+  if(icon && typeof icon==='string' && icon.startsWith('data:image')) return `<img src="${icon}">`;
+  return icon || '👤';
+}
+function renderAvatar(elId, icon){
+  const el = document.getElementById(elId);
+  if(el) el.innerHTML = avatarContent(icon);
+}
+
 function updateHeaderUI(){
-  document.getElementById('hdrAvatar').textContent = userProfile.icon || '👤';
+  renderAvatar('hdrAvatar', userProfile.icon);
   document.getElementById('hdrUser').textContent = userProfile.nickname || (currentUser.isAnonymous?'ゲスト':'ユーザー');
-  document.getElementById('profAvatarBig').textContent = userProfile.icon || '👤';
+  renderAvatar('profAvatarBig', userProfile.icon);
   document.getElementById('profNickBig').textContent = userProfile.nickname || 'ニックネーム未設定';
   document.getElementById('profMsgBig').textContent = userProfile.message || 'ひとこと未設定';
   document.getElementById('profAccType').textContent = currentUser.isAnonymous ? 'ゲストアカウント（端末固有）' : (currentUser.providerData[0]?.providerId==='google.com'?'Googleアカウント連携':'Appleアカウント連携');
@@ -329,11 +370,43 @@ function openProfile(){
   grid.innerHTML = EMOJIS.map(e=>`<button class="${e===userProfile.icon?'on':''}" data-e="${e}" onclick="pickEmoji('${e}')">${e}</button>`).join('');
   document.getElementById('inputNick').value = userProfile.nickname || '';
   document.getElementById('inputMsg').value = userProfile.message || '';
+  renderAvatar('iconPreview', userProfile.icon);
   document.getElementById('profileModal').classList.add('on');
 }
 function pickEmoji(e){
   userProfile._tmpIcon = e;
   document.querySelectorAll('#emojiGrid button').forEach(b=>b.classList.toggle('on', b.dataset.e===e));
+  renderAvatar('iconPreview', e);
+}
+function pickAlbumIcon(){
+  document.getElementById('iconFileInput').click();
+}
+function onIconFileSelected(ev){
+  const file = ev.target.files && ev.target.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ showToast('画像ファイルを選んでください'); return; }
+  const reader = new FileReader();
+  reader.onload = function(e){
+    const img = new Image();
+    img.onload = function(){
+      // 正方形にトリミング＆縮小してFirestoreの容量を節約
+      const size = 160;
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const scale = Math.max(size/img.width, size/img.height);
+      const w = img.width*scale, h = img.height*scale;
+      ctx.drawImage(img, (size-w)/2, (size-h)/2, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      userProfile._tmpIcon = dataUrl;
+      document.querySelectorAll('#emojiGrid button').forEach(b=>b.classList.remove('on'));
+      renderAvatar('iconPreview', dataUrl);
+    };
+    img.onerror = function(){ showToast('画像の読み込みに失敗しました'); };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+  ev.target.value = '';
 }
 async function saveProfile(){
   const nick = document.getElementById('inputNick').value.trim();
@@ -346,10 +419,13 @@ async function saveProfile(){
     await db.collection('users').doc(currentUser.uid).set({
       nickname: userProfile.nickname, message: userProfile.message, icon: userProfile.icon
     }, {merge:true});
+    // 変更を即座に関連箇所へ反映（ヘッダー・プロフィール画面・記録一覧）
+    profilesCache[currentUser.uid] = { nickname:userProfile.nickname, icon:userProfile.icon };
     updateHeaderUI();
+    renderLogList();
     closeModal('profileModal');
     showToast('プロフィールを保存しました');
-  }catch(e){ showToast('保存に失敗しました'); }
+  }catch(e){ showToast('保存に失敗しました: '+e.message); }
 }
 
 /* ===================== タブ切替 ===================== */
@@ -414,12 +490,14 @@ function onMapClick(e){
   document.getElementById('pinHint').classList.remove('on');
   openPinModal();
 }
-function openPinModal(){
-  selectedGomiTypes = [];
+function openPinModal(existing){
+  editingRecordId = existing ? existing.id : null;
+  selectedGomiTypes = existing ? [...(existing.types||[])] : [];
   const wrap = document.getElementById('gomiTypes');
-  wrap.innerHTML = GOMI_TYPES.map(t=>`<span class="gomi-chip" data-t="${t}" onclick="toggleGomiType('${t}',this)">${t}</span>`).join('');
-  document.getElementById('inputCount').value = 1;
-  document.getElementById('inputNote').value = '';
+  wrap.innerHTML = GOMI_TYPES.map(t=>`<span class="gomi-chip ${selectedGomiTypes.includes(t)?'on':''}" data-t="${t}" onclick="toggleGomiType('${t}',this)">${t}</span>`).join('');
+  document.getElementById('inputCount').value = existing ? (existing.count||1) : 1;
+  document.getElementById('inputNote').value = existing ? (existing.note||'') : '';
+  document.getElementById('pinModalTitle').textContent = existing ? 'ごみの記録をやり直す' : 'ごみを記録する';
   document.getElementById('pinModal').classList.add('on');
 }
 function toggleGomiType(t, el){
@@ -428,28 +506,56 @@ function toggleGomiType(t, el){
   else { selectedGomiTypes.push(t); el.classList.add('on'); }
 }
 async function savePin(){
-  if(!pendingLatLng){ closeModal('pinModal'); return; }
+  if(!editingRecordId && !pendingLatLng){ closeModal('pinModal'); return; }
   if(selectedGomiTypes.length===0){ showToast('ごみの種類を選んでください'); return; }
   const count = Math.max(1, parseInt(document.getElementById('inputCount').value)||1);
   const note = document.getElementById('inputNote').value.trim();
   try{
-    await db.collection('recs').add({
-      uid: currentUser.uid,
-      nickname: userProfile.nickname || 'ゲスト',
-      icon: userProfile.icon || '👤',
-      lat: pendingLatLng.lat,
-      lng: pendingLatLng.lng,
-      types: selectedGomiTypes,
-      count: count,
-      note: note,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    closeModal('pinModal');
-    showToast('記録しました！ありがとうございます');
+    if(editingRecordId){
+      await db.collection('recs').doc(editingRecordId).update({
+        types: selectedGomiTypes, count: count, note: note
+      });
+      closeModal('pinModal');
+      showThanksEffect('修正しました！ありがとうございます');
+    } else {
+      await db.collection('recs').add({
+        uid: currentUser.uid,
+        nickname: userProfile.nickname || 'ゲスト',
+        icon: userProfile.icon || '👤',
+        lat: pendingLatLng.lat,
+        lng: pendingLatLng.lng,
+        types: selectedGomiTypes,
+        count: count,
+        note: note,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      closeModal('pinModal');
+      showThanksEffect('ありがとう！記録できました');
+    }
   }catch(e){
     showToast('記録に失敗しました: '+e.message);
   }
   pendingLatLng = null;
+  editingRecordId = null;
+}
+async function deleteRecord(id){
+  if(!confirm('この記録を削除しますか？')) return;
+  try{
+    await db.collection('recs').doc(id).delete();
+    showToast('削除しました');
+  }catch(e){ showToast('削除に失敗しました: '+e.message); }
+}
+function editRecord(id){
+  const r = allRecords.find(x=>x.id===id);
+  if(!r) return;
+  if(r.uid !== currentUser.uid){ showToast('自分の記録のみやり直せます'); return; }
+  openPinModal(r);
+}
+function viewOnMap(lat, lng){
+  document.querySelector('.tab[data-scr="mapScr"]').click();
+  setTimeout(()=>{
+    if(map){ map.setView([lat,lng], 18); }
+  }, 150);
 }
 
 /* ---- Firestoreリアルタイム購読 & グリッド集計 ---- */
@@ -494,25 +600,75 @@ function renderGrid(){
   });
 }
 
-function renderLogList(){
+async function getProfile(uid){
+  if(profilesCache[uid]) return profilesCache[uid];
+  try{
+    const doc = await db.collection('users').doc(uid).get();
+    profilesCache[uid] = doc.exists ? { nickname:doc.data().nickname, icon:doc.data().icon } : null;
+  }catch(e){ profilesCache[uid] = null; }
+  return profilesCache[uid];
+}
+
+async function renderLogList(){
   const wrap = document.getElementById('logList');
   if(allRecords.length===0){
     wrap.innerHTML = '<div class="card" style="text-align:center;color:var(--gray);">まだ記録がありません</div>';
     return;
   }
+  // 記録に登場する全ユーザーの最新プロフィールを取得（プロフィール変更が一覧にも反映されるように）
+  const uids = [...new Set(allRecords.map(r=>r.uid).filter(Boolean))];
+  await Promise.all(uids.map(getProfile));
+
   wrap.innerHTML = allRecords.map(r=>{
     const date = r.createdAt && r.createdAt.toDate ? r.createdAt.toDate().toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+    const live = profilesCache[r.uid];
+    const icon = (live && live.icon) || r.icon || '👤';
+    const nickname = (live && live.nickname) || r.nickname || 'ゲスト';
+    const isMine = currentUser && r.uid === currentUser.uid;
     return `<div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div style="font-weight:700;">${r.icon||'👤'} ${escapeHtml(r.nickname||'ゲスト')}</div>
+        <div style="font-weight:700;display:flex;align-items:center;gap:6px;"><span class="mini-avatar">${avatarContent(icon)}</span>${escapeHtml(nickname)}</div>
         <div style="font-size:10px;color:var(--gray);">${date}</div>
       </div>
       <div style="margin-top:6px;font-size:13px;">${(r.types||[]).map(t=>`<span class="gomi-chip on">${escapeHtml(t)}</span>`).join('')}</div>
       <div style="margin-top:4px;font-size:12px;color:var(--gray);">個数: ${r.count||1}個${r.note?(' / '+escapeHtml(r.note)):''}</div>
+      <div class="log-actions">
+        <button onclick="viewOnMap(${r.lat},${r.lng})">🗺️ 地図で見る</button>
+        ${isMine ? `<button onclick="editRecord('${r.id}')">↩️ やり直す</button>
+        <button class="danger" onclick="deleteRecord('${r.id}')">🗑️ 削除</button>` : ''}
+      </div>
     </div>`;
   }).join('');
 }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ===================== ありがとう演出（音＋ポップアップ） ===================== */
+function playThanksSound(){
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const now = ctx.currentTime;
+    [[880,0],[1318.5,0.09]].forEach(([freq,delay])=>{
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, now+delay);
+      gain.gain.linearRampToValueAtTime(0.25, now+delay+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now+delay+0.35);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now+delay);
+      osc.stop(now+delay+0.4);
+    });
+  }catch(e){ /* 音が出せない環境は無視 */ }
+}
+function showThanksEffect(message){
+  const el = document.getElementById('thanksPopup');
+  el.innerHTML = `🙏 ${escapeHtml(message)}<br><span style="font-size:13px;font-weight:400;">記録してくれて感謝です</span>`;
+  el.classList.remove('show');
+  void el.offsetWidth; // reflow でアニメーションをリスタート
+  el.classList.add('show');
+  playThanksSound();
+}
 
 /* ===================== 共通UI ===================== */
 function closeModal(id){ document.getElementById(id).classList.remove('on'); }
