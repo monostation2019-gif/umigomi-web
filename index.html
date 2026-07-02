@@ -385,11 +385,41 @@
      ES Modules(import文)を使わないため、file://で直接開いても
      CORSエラーが出にくく、初心者でも動作確認しやすい。
      ============================================================ -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
 
 <script>
+/* =============================================================
+   起動時の安全装置:
+   ・Firebase SDKの読み込みに失敗した場合
+   ・script内でエラーが起きて処理が止まった場合
+   ・何らかの理由で一定時間たっても画面が切り替わらない場合
+   これらすべてで「準備中…」のまま固まらず、原因をエラー表示する。
+   ============================================================= */
+window.addEventListener("error", function (e) {
+  showSplashError("エラーが発生しました: " + (e.message || e));
+});
+window.addEventListener("unhandledrejection", function (e) {
+  const msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
+  showSplashError("エラーが発生しました: " + msg);
+});
+setTimeout(function () {
+  const splash = document.getElementById("splash");
+  if (splash && !splash.classList.contains("hidden") && document.getElementById("splashError").style.display === "none") {
+    if (window.__sdkLoadFailed) {
+      showSplashError("Firebaseの読み込みに失敗しました。ネット接続、広告ブロッカー/セキュリティソフト、または https://www.gstatic.com へのアクセス制限をご確認ください。");
+    } else if (typeof firebase === "undefined") {
+      showSplashError("Firebase SDKが読み込めていません。ネット接続をご確認のうえ再読み込みしてください。");
+    } else {
+      showSplashError("初期化がタイムアウトしました。ネット接続、またはFirebaseプロジェクトの設定（APIキー等）をご確認ください。");
+    }
+  }
+}, 8000);
+</script>
+
+<script>
+
 /* =============================================================
    ★★★ ここを自分のFirebaseプロジェクトの値に書き換えてください ★★★
    取得場所: Firebaseコンソール →（歯車アイコン）プロジェクトの設定
@@ -405,10 +435,16 @@ const firebaseConfig = {
   appId: "1:104498907704:web:eab43b09887d7d3fed34cd"
 };
 
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
-const googleProvider = new firebase.auth.GoogleAuthProvider();
+let auth, db, googleProvider;
+try {
+  firebase.initializeApp(firebaseConfig);
+  auth = firebase.auth();
+  db = firebase.firestore();
+  googleProvider = new firebase.auth.GoogleAuthProvider();
+} catch (e) {
+  showSplashError("Firebaseの初期化に失敗しました: " + e.message);
+  throw e;
+}
 
 /* =============================================================
    定数（Firestoreのコレクション名・フィールド名を1箇所に集約）
