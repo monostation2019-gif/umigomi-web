@@ -200,6 +200,16 @@
     min-height: 16px;
   }
   .avatar-status.error { color: #B00020; }
+  .avatar-uploading-overlay {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .spinner.small { width: 22px; height: 22px; border-width: 2px; border-top-color: #fff; }
   .info-row { padding: 10px 0; border-bottom: 1px solid var(--color-outline); }
   .info-row:last-child { border-bottom: none; }
   .info-row .label { font-size: 12px; color: var(--color-text-sub); }
@@ -440,6 +450,9 @@
         <img class="profile-avatar" id="profileAvatarImg" src="icons/default_avatar.png" alt="プロフィール画像"
              onclick="document.getElementById('avatarFileInput').click();">
         <div class="avatar-edit-badge" onclick="document.getElementById('avatarFileInput').click();">📷</div>
+        <div class="avatar-uploading-overlay" id="avatarUploadingOverlay" style="display:none;">
+          <div class="spinner small"></div>
+        </div>
       </div>
       <!-- 実際に画面には表示せず、タップ時にOSの写真選択(アルバム/カメラ)を開くための入力欄 -->
       <input type="file" id="avatarFileInput" accept="image/*" style="display:none" onchange="onAvatarFileSelected(event)">
@@ -515,7 +528,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
 
 <script>
 /* =============================================================
@@ -563,12 +575,11 @@ const firebaseConfig = {
   appId: "1:104498907704:web:eab43b09887d7d3fed34cd"
 };
 
-let auth, db, storage, googleProvider;
+let auth, db, googleProvider;
 try {
   firebase.initializeApp(firebaseConfig);
   auth = firebase.auth();
   db = firebase.firestore();
-  storage = firebase.storage();
   googleProvider = new firebase.auth.GoogleAuthProvider();
 
   // 永続化方式を試す。IndexedDBがブロックされている環境では
@@ -595,6 +606,20 @@ const DEFAULT_ICON = "icons/default_avatar.png";
 
 /* 現在のプロフィールをメモリ上にも保持しておく（編集フォームの初期値等に使う） */
 let currentProfile = null;
+
+/* アバター画像のアップロードが進行中かどうか。
+   trueの間にログアウト・タブを閉じる等が起きると保存が失敗するため、
+   この変数を見てそれらの操作を止める。 */
+let isAvatarUploading = false;
+
+/* アップロード中にタブを閉じたり再読み込みされたりすると保存が途中で
+   打ち切られてしまうため、ブラウザ標準の確認ダイアログで警告する。 */
+window.addEventListener("beforeunload", (event) => {
+  if (isAvatarUploading) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
+});
 
 /* =============================================================
    1. 認証
@@ -707,6 +732,10 @@ async function loginAsGuest() {
 
 /* ログアウト */
 async function logout() {
+  if (isAvatarUploading) {
+    alert("画像を保存中です。完了してからログアウトしてください（あと数秒お待ちください）。");
+    return;
+  }
   await auth.signOut();
   currentProfile = null;
   switchScreen("home");
@@ -797,55 +826,51 @@ async function onAvatarFileSelected(event) {
   }
 
   const imgEl = document.getElementById("profileAvatarImg");
-  const previousSrc = imgEl.src; // アップロード失敗時に元へ戻すために保持
+  const previousSrc = imgEl.src; // 失敗時に元へ戻すために保持
   const previousIconUrl = currentProfile ? currentProfile.iconUrl : DEFAULT_ICON;
 
+  isAvatarUploading = true;
+  document.getElementById("avatarUploadingOverlay").style.display = "flex";
   try {
     setAvatarStatus("画像を処理中…", false);
-    const canvas = await loadResizedCanvas(file, 400);
 
-    // ★体感速度の改善ポイント:
-    // アップロード(通信)の完了を待たず、リサイズ済みの画像をこの時点で
-    // 画面にすぐ反映する。通信は裏側で並行して進める。
-    const previewDataUrl = canvas.toDataURL("image/jpeg", 0.85);
-    imgEl.src = previewDataUrl;
-    setAvatarStatus("アップロード中…", false);
+    // 画像を小さく圧縮し、Firestoreの1ドキュメント上限(1MB)に収まる
+    // データURL(文字列)に変換する。大きすぎる場合は段階的に縮小して再試行する。
+    const dataUrl = await compressImageToDataUrl(file);
 
-    // ★バグ修正ポイント:
-    // ここで currentProfile.iconUrl もプレビュー画像に更新しておく。
-    // こうしておかないと、アップロード完了前に「プロフィールを保存する」等の
-    // 別の操作でrenderProfile()が呼ばれた際、まだ古いiconUrlのまま
-    // 画面が再描画され、画像が一瞬で元に戻ってしまう不具合が起きる。
-    currentProfile = { ...currentProfile, iconUrl: previewDataUrl };
+    // 画面にすぐ反映する
+    imgEl.src = dataUrl;
 
-    const blob = await canvasToBlob(canvas, 0.85);
+    // ★重要: Storageへのアップロード→URL取得→Firestore更新、という
+    // 3段階の通信をやめ、圧縮した画像データを直接Firestoreに書き込む
+    // 「1回の保存」だけで完結させている。保存が一瞬で終わるため、
+    // 保存の途中でアプリを閉じる／ログアウトすることによる
+    // 「画像だけ保存されない」不具合がほぼ起きなくなる。
+    setAvatarStatus("保存中…", false);
     const uid = auth.currentUser.uid;
-    const storageRef = storage.ref().child("avatars/" + uid + "/avatar.jpg");
-    await storageRef.put(blob, { contentType: "image/jpeg" });
-    const downloadUrl = await storageRef.getDownloadURL();
-
     const updateData = {
-      iconUrl: downloadUrl,
+      iconUrl: dataUrl,
       updatedAt: firebase.firestore.Timestamp.now(),
     };
     await db.collection(USERS_COLLECTION).doc(uid).update(updateData);
 
     currentProfile = { ...currentProfile, ...updateData };
     document.getElementById("viewUpdatedAt").textContent = formatTimestamp(updateData.updatedAt);
-    // 正式な保存先URLに差し替え（見た目はプレビューとほぼ同じなので切り替わりは分からない）
-    imgEl.src = downloadUrl;
     setAvatarStatus("画像を更新しました", false);
     setTimeout(() => setAvatarStatus("", false), 2500);
   } catch (e) {
     imgEl.src = previousSrc; // 失敗時はプレビューを元に戻す
     currentProfile = { ...currentProfile, iconUrl: previousIconUrl }; // 裏側のデータも元に戻す
-    if (e.code === "storage/unauthorized") {
-      setAvatarStatus("アップロード権限がありません。Firebaseコンソール→Storage→Rulesの設定をご確認ください。", true);
-    } else if (e.code === "storage/unknown" || /CORS/i.test(e.message || "")) {
-      setAvatarStatus("Storageへの接続に失敗しました。Firebaseコンソールで Storage が有効化されているかご確認ください。", true);
+    if (e.code === "permission-denied") {
+      setAvatarStatus("保存の権限がありません。Firestoreのルール設定をご確認ください。", true);
+    } else if (e.message === "IMAGE_TOO_LARGE") {
+      setAvatarStatus("この画像は圧縮しても大きすぎるため保存できませんでした。別の画像をお試しください。", true);
     } else {
       setAvatarStatus("画像の更新に失敗しました: " + e.message, true);
     }
+  } finally {
+    isAvatarUploading = false;
+    document.getElementById("avatarUploadingOverlay").style.display = "none";
   }
 }
 
@@ -878,15 +903,34 @@ function loadResizedCanvas(file, maxSize) {
   });
 }
 
-/* canvasをJPEG Blobに変換する（Storageへのアップロード用） */
-function canvasToBlob(canvas, quality) {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("画像の変換に失敗しました"))),
-      "image/jpeg",
-      quality
-    );
-  });
+/* =============================================================
+   画像をFirestoreに直接保存できるサイズまで圧縮する。
+   Firestoreの1ドキュメントは1MBまでという制限があるため、
+   余裕を持って「データURL文字列で700KB」を上限とし、
+   それでも大きい場合は段階的に縮小・低画質化して再試行する。
+   ============================================================= */
+const MAX_DATA_URL_LENGTH = 700 * 1024; // 約700KB分の文字数
+
+async function compressImageToDataUrl(file) {
+  // [辺の最大サイズ, JPEG品質] の組み合わせを、大きい順→小さい順に試す
+  const attempts = [
+    [400, 0.85],
+    [400, 0.6],
+    [280, 0.6],
+    [200, 0.5],
+  ];
+
+  let lastDataUrl = null;
+  for (const [maxSize, quality] of attempts) {
+    const canvas = await loadResizedCanvas(file, maxSize);
+    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+    lastDataUrl = dataUrl;
+    if (dataUrl.length <= MAX_DATA_URL_LENGTH) {
+      return dataUrl;
+    }
+  }
+  // 一番小さい設定でも収まらなかった場合はエラーとして扱う
+  throw new Error("IMAGE_TOO_LARGE");
 }
 
 /* =============================================================
