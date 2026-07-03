@@ -85,6 +85,61 @@
   .hero h1 { font-size: 20px; margin: 12px 0 4px; }
   .hero p { color: var(--color-text-sub); margin: 0; }
 
+  /* ---------- ホーム: 記録サマリーカード ---------- */
+  .home-stats-card {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+  }
+  .stat-item { text-align: center; }
+  .stat-value { font-size: 32px; font-weight: bold; color: var(--color-primary); line-height: 1.1; }
+  .stat-label { font-size: 12px; color: var(--color-text-sub); margin-top: 4px; }
+
+  /* ---------- ホーム: ショートカットカード ---------- */
+  .shortcut-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .shortcut-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-outline);
+    border-radius: 16px;
+    padding: 20px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .shortcut-card:active { background: var(--color-primary-light); }
+  .shortcut-icon { font-size: 28px; }
+  .shortcut-label { font-size: 13px; font-weight: bold; color: var(--color-text); }
+
+  /* ---------- ホーム: 使い方カード ---------- */
+  .section-title { font-size: 15px; margin: 0 0 12px; }
+  .howto-list {
+    margin: 0;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .howto-list li { font-size: 14px; line-height: 1.5; }
+  .badge-soon {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 10px;
+    color: var(--color-text-sub);
+    background: var(--color-bg);
+    border: 1px solid var(--color-outline);
+    border-radius: 10px;
+    padding: 1px 8px;
+    vertical-align: middle;
+  }
+
   /* ---------- プレースホルダー画面(地図・記録一覧) ---------- */
   .placeholder {
     text-align: center;
@@ -327,8 +382,38 @@
   <section class="screen active" id="screen-home">
     <div class="hero">
       <div class="material-emoji">🌊</div>
-      <h1>ようこそ！</h1>
-      <p>ここにホームコンテンツが表示されます。</p>
+      <h1 id="homeGreeting">ようこそ！</h1>
+      <p>伊勢志摩の海ゴミを記録・共有するアプリです。</p>
+    </div>
+
+    <!-- 記録サマリー（今はプレースホルダー。記録機能ができたら実際の件数に差し替え予定） -->
+    <div class="card home-stats-card">
+      <div class="stat-item">
+        <div class="stat-value" id="statRecordCount">0</div>
+        <div class="stat-label">これまでの記録</div>
+      </div>
+    </div>
+
+    <!-- 他のタブへのショートカット -->
+    <div class="shortcut-grid">
+      <button class="shortcut-card" onclick="switchScreen('map')">
+        <span class="shortcut-icon">🗺️</span>
+        <span class="shortcut-label">地図を見る</span>
+      </button>
+      <button class="shortcut-card" onclick="switchScreen('records')">
+        <span class="shortcut-icon">📋</span>
+        <span class="shortcut-label">記録一覧を見る</span>
+      </button>
+    </div>
+
+    <!-- 使い方 -->
+    <div class="card home-howto-card">
+      <h2 class="section-title">使い方</h2>
+      <ol class="howto-list">
+        <li>海岸で見つけたゴミを記録する<span class="badge-soon">準備中</span></li>
+        <li>地図でみんなの記録を確認する<span class="badge-soon">準備中</span></li>
+        <li>プロフィールで自分の活動をふりかえる</li>
+      </ol>
     </div>
   </section>
 
@@ -671,6 +756,12 @@ function renderProfile() {
   document.getElementById("viewUpdatedAt").textContent = formatTimestamp(currentProfile.updatedAt);
   document.getElementById("profileAvatarImg").src = currentProfile.iconUrl || DEFAULT_ICON;
   document.getElementById("viewAuthMethod").textContent = currentProfile.authMethod || "-";
+
+  // ホーム画面の歓迎メッセージにもニックネームを反映
+  const greetingEl = document.getElementById("homeGreeting");
+  if (greetingEl) {
+    greetingEl.textContent = "ようこそ、" + currentProfile.nickname + "さん！";
+  }
 }
 
 function formatTimestamp(ts) {
