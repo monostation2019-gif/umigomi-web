@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>まちみっけ｜ログイン</title>
+<meta name="theme-color" content="#FAF7F0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --green-dark:#1F5A3D;
+    --green:#2E7D52;
+    --green-soft:#E8F3EC;
+    --amber:#E8871E;
+    --amber-soft:#FDEEDB;
+    --cream:#FAF7F0;
+    --ink:#2B2B26;
+    --ink-soft:#6B6A62;
+    --white:#FFFFFF;
+    --line:#EFECE2;
+    --shadow: 0 10px 24px rgba(31,90,61,0.14);
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:"Noto Sans JP", sans-serif;
+    background:var(--cream);
+    color:var(--ink);
+    min-height:100dvh;
+    display:flex;
+    justify-content:center;
+    -webkit-font-smoothing:antialiased;
+  }
+  html.auth-checking #app{ visibility:hidden; }
+
+  #app{
+    width:100%;
+    max-width:460px;
+    min-height:100dvh;
+    background:var(--cream);
+    display:flex;
+    flex-direction:column;
+  }
+
+  .top-header{
+    padding:18px 20px 4px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .logo{
+    font-family:"Zen Maru Gothic", sans-serif;
+    font-weight:900;
+    font-size:26px;
+    line-height:1;
+    display:flex; align-items:center; gap:2px;
+  }
+  .logo .machi{ color:var(--green-dark); }
+  .logo .mikke{ color:var(--amber); }
+  .logo .dot-icon{ display:inline-flex; margin-left:2px; transform:rotate(-8deg) translateY(-3px); }
+  .pref-badge{
+    align-self:flex-start;
+    background:var(--green);
+    color:var(--white);
+    font-size:11px;
+    font-weight:700;
+    padding:4px 12px;
+    border-radius:999px;
+    letter-spacing:.04em;
+  }
+
+  .hero-card{
+    margin:12px 20px 0;
+    border-radius:18px;
+    overflow:hidden;
+    box-shadow:var(--shadow);
+    aspect-ratio: 4 / 3;
+    position:relative;
+  }
+  .hero-card img{
+    width:100%; height:100%;
+    object-fit:cover;
+    object-position:center 42%;
+    display:block;
+  }
+
+  .tagline{ padding:16px 22px 4px; text-align:center; }
+  .tagline h1{
+    font-family:"Zen Maru Gothic", sans-serif;
+    font-size:16px;
+    font-weight:700;
+    color:var(--green-dark);
+    line-height:1.6;
+  }
+  .tagline p{
+    margin-top:6px;
+    font-size:12px;
+    line-height:1.7;
+    color:var(--ink-soft);
+  }
+
+  .cta-area{ padding:16px 22px 6px; display:flex; flex-direction:column; gap:10px; }
+  .btn{
+    width:100%;
+    border:none;
+    border-radius:14px;
+    padding:14px 16px;
+    font-size:15px;
+    font-weight:700;
+    font-family:"Noto Sans JP", sans-serif;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    cursor:pointer;
+    transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
+  }
+  .btn:active{ transform:scale(0.98); }
+  .btn[disabled]{ opacity:0.6; cursor:default; transform:none !important; }
+
+  .btn-google{ background:var(--white); color:var(--ink); border:1.5px solid #E4E1D8; }
+  .btn-guest{ background:var(--green); color:var(--white); box-shadow:var(--shadow); }
+  .btn-guest:hover{ background:var(--green-dark); }
+
+  .auth-status{ min-height:16px; text-align:center; font-size:12px; color:var(--amber); font-weight:700; }
+  .auth-note{ text-align:center; font-size:11px; color:var(--ink-soft); line-height:1.6; padding:0 6px; }
+
+  .feature-strip{ display:flex; justify-content:space-between; gap:8px; padding:16px 22px 10px; }
+  .feature-item{ flex:1; text-align:center; display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .feature-item .circle{
+    width:42px; height:42px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; font-size:18px;
+  }
+  .feature-item .label{ font-size:10px; color:var(--ink-soft); font-weight:700; line-height:1.4; }
+
+  .spacer{ flex:1; }
+
+  @media (min-width:768px){
+    body{ padding:24px 0; }
+    #app{ border-radius:28px; box-shadow:0 0 60px rgba(0,0,0,0.08); min-height:820px; height:820px; overflow-y:auto; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header class="top-header">
+    <div class="logo">
+      <span class="machi">まち</span><span class="mikke">みっけ</span>
+      <span class="dot-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <circle cx="10" cy="10" r="7" stroke="#E8871E" stroke-width="2.6"/>
+          <line x1="15.5" y1="15.5" x2="21" y2="21" stroke="#E8871E" stroke-width="2.6" stroke-linecap="round"/>
+        </svg>
+      </span>
+    </div>
+    <span class="pref-badge">伊勢市限定版</span>
+  </header>
+
+  <div class="hero-card">
+    <img src="assets/hero-street.png" alt="伊勢のまちを歩く・走る・自転車で巡る人々のイラスト">
+  </div>
+
+  <div class="tagline">
+    <h1>歩いて、走って、見つけよう。<br>みんなでつくる、伊勢の図鑑。</h1>
+    <p>まちで見つけたものを写真で記録。AIが判定して、みんなの図鑑になります。</p>
+  </div>
+
+  <div class="cta-area">
+    <button id="btn-google" class="btn btn-google">
+      <svg width="18" height="18" viewBox="0 0 48 48">
+        <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.9 32.5 29.4 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.3 6.1 29.4 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/>
+        <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.5 18.9 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.3 6.1 29.4 4 24 4 16.3 4 9.6 8.3 6.3 14.7z"/>
+        <path fill="#4CAF50" d="M24 44c5.3 0 10.1-2 13.7-5.4l-6.3-5.3C29.3 35.1 26.8 36 24 36c-5.4 0-9.9-3.5-11.4-8.3l-6.5 5C9.6 39.7 16.3 44 24 44z"/>
+        <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.9 2.6-2.5 4.8-4.6 6.3l6.3 5.3C39.9 37 44 31 44 24c0-1.3-.1-2.7-.4-3.5z"/>
+      </svg>
+      Googleでログイン
+    </button>
+
+    <button id="btn-guest" class="btn btn-guest">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M12 12c2.5 0 4.5-2 4.5-4.5S14.5 3 12 3 7.5 5 7.5 7.5 9.5 12 12 12z" stroke="white" stroke-width="1.8"/>
+        <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      ゲストで始める
+    </button>
+
+    <div class="auth-status" id="auth-status"></div>
+    <div class="auth-note">ゲストでもすべての機能を利用できます。<br>あとからGoogleアカウントに連携できます。</div>
+  </div>
+
+  <div class="feature-strip">
+    <div class="feature-item"><div class="circle" style="background:#EAF4E9;">📷</div><div class="label">見つけて</div></div>
+    <div class="feature-item"><div class="circle" style="background:#FDEEDB;">🔍</div><div class="label">AIで判定</div></div>
+    <div class="feature-item"><div class="circle" style="background:#FCE4EE;">📖</div><div class="label">図鑑に登録</div></div>
+    <div class="feature-item"><div class="circle" style="background:#E1EEF7;">🗺️</div><div class="label">伊勢を知る</div></div>
+  </div>
+
+  <div class="spacer"></div>
+</div>
+
+<!-- ===================== Firebase ===================== -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="assets/firebase-init.js"></script>
+<script>
+  document.documentElement.classList.add("auth-checking");
+
+  const $ = (id) => document.getElementById(id);
+  const authStatus = $("auth-status");
+  const btnGoogle = $("btn-google");
+  const btnGuest = $("btn-guest");
+
+  function setStatus(msg, isError){
+    authStatus.textContent = msg || "";
+    authStatus.style.color = isError ? "#C0392B" : "var(--amber)";
+  }
+  function setButtonsDisabled(disabled){
+    btnGoogle.disabled = disabled;
+    btnGuest.disabled = disabled;
+  }
+
+  btnGoogle.addEventListener("click", async () => {
+    setStatus("Googleでログイン中…");
+    setButtonsDisabled(true);
+    try{
+      const provider = new firebase.auth.GoogleAuthProvider();
+      const result = await auth.signInWithPopup(provider);
+      await upsertGoogleUser(result.user);
+      window.location.href = "index.html";
+    }catch(err){
+      console.error(err);
+      setStatus("ログインに失敗しました。もう一度お試しください。", true);
+      setButtonsDisabled(false);
+    }
+  });
+
+  btnGuest.addEventListener("click", async () => {
+    setStatus("ゲストアカウントを発行中…");
+    setButtonsDisabled(true);
+    try{
+      const result = await auth.signInAnonymously();
+      await issueUniqueGuestName(result.user.uid);
+      window.location.href = "index.html";
+    }catch(err){
+      console.error(err);
+      setStatus("ゲストログインに失敗しました。もう一度お試しください。", true);
+      setButtonsDisabled(false);
+    }
+  });
+
+  // すでにログイン済みならホームへ即遷移（ログイン画面を出さない）
+  auth.onAuthStateChanged((user) => {
+    if (user){
+      window.location.href = "index.html";
+      return;
+    }
+    document.documentElement.classList.remove("auth-checking");
+  });
+</script>
+</body>
+</html>
