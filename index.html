@@ -104,8 +104,14 @@
   /* ---------- プロフィール画面 ---------- */
   .profile-avatar-wrap {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
     margin-bottom: 24px;
+  }
+  .avatar-inner {
+    position: relative;
+    width: 96px;
+    height: 96px;
   }
   .profile-avatar {
     width: 96px;
@@ -116,6 +122,29 @@
     border: 2px solid var(--color-primary);
     cursor: pointer;
   }
+  .avatar-edit-badge {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    border: 2px solid var(--color-surface);
+    cursor: pointer;
+  }
+  .avatar-status {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--color-text-sub);
+    min-height: 16px;
+  }
+  .avatar-status.error { color: #B00020; }
   .info-row { padding: 10px 0; border-bottom: 1px solid var(--color-outline); }
   .info-row:last-child { border-bottom: none; }
   .info-row .label { font-size: 12px; color: var(--color-text-sub); }
@@ -322,8 +351,14 @@
   <!-- プロフィール -->
   <section class="screen" id="screen-profile">
     <div class="profile-avatar-wrap">
-      <img class="profile-avatar" id="profileAvatarImg" src="icons/default_avatar.png" alt="プロフィール画像"
-           onclick="alert('画像変更機能は今後実装予定です');">
+      <div class="avatar-inner">
+        <img class="profile-avatar" id="profileAvatarImg" src="icons/default_avatar.png" alt="プロフィール画像"
+             onclick="document.getElementById('avatarFileInput').click();">
+        <div class="avatar-edit-badge" onclick="document.getElementById('avatarFileInput').click();">📷</div>
+      </div>
+      <!-- 実際に画面には表示せず、タップ時にOSの写真選択(アルバム/カメラ)を開くための入力欄 -->
+      <input type="file" id="avatarFileInput" accept="image/*" style="display:none" onchange="onAvatarFileSelected(event)">
+      <div id="avatarStatus" class="avatar-status"></div>
     </div>
 
     <!-- 表示モード -->
@@ -395,6 +430,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
 
 <script>
 /* =============================================================
@@ -442,11 +478,12 @@ const firebaseConfig = {
   appId: "1:104498907704:web:eab43b09887d7d3fed34cd"
 };
 
-let auth, db, googleProvider;
+let auth, db, storage, googleProvider;
 try {
   firebase.initializeApp(firebaseConfig);
   auth = firebase.auth();
   db = firebase.firestore();
+  storage = firebase.storage();
   googleProvider = new firebase.auth.GoogleAuthProvider();
 
   // 永続化方式を試す。IndexedDBがブロックされている環境では
@@ -643,7 +680,97 @@ function formatTimestamp(ts) {
 }
 
 /* =============================================================
-   4. プロフィール編集
+   4. プロフィール画像の変更
+   選んだ画像はそのままアップロードすると容量が大きいことがあるため、
+   canvasで一辺400px程度に縮小・JPEG圧縮してからFirebase Storageへ送る。
+   ============================================================= */
+function setAvatarStatus(message, isError) {
+  const el = document.getElementById("avatarStatus");
+  el.textContent = message || "";
+  el.classList.toggle("error", !!isError);
+}
+
+async function onAvatarFileSelected(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = ""; // 同じファイルを連続で選んでもchangeが発火するようにリセット
+  if (!file) return;
+
+  if (!file.type.startsWith("image/")) {
+    setAvatarStatus("画像ファイルを選んでください", true);
+    return;
+  }
+  // 極端に大きい元ファイル(20MB超)は読み込み負荷が高いため事前に弾く
+  if (file.size > 20 * 1024 * 1024) {
+    setAvatarStatus("ファイルサイズが大きすぎます（20MBまで）", true);
+    return;
+  }
+
+  try {
+    setAvatarStatus("画像を処理中…", false);
+    const blob = await resizeImageToBlob(file, 400, 0.85);
+
+    setAvatarStatus("アップロード中…", false);
+    const uid = auth.currentUser.uid;
+    const storageRef = storage.ref().child("avatars/" + uid + "/avatar.jpg");
+    await storageRef.put(blob, { contentType: "image/jpeg" });
+    const downloadUrl = await storageRef.getDownloadURL();
+
+    const updateData = {
+      iconUrl: downloadUrl,
+      updatedAt: firebase.firestore.Timestamp.now(),
+    };
+    await db.collection(USERS_COLLECTION).doc(uid).update(updateData);
+
+    currentProfile = { ...currentProfile, ...updateData };
+    renderProfile();
+    setAvatarStatus("画像を更新しました", false);
+    setTimeout(() => setAvatarStatus("", false), 2500);
+  } catch (e) {
+    if (e.code === "storage/unauthorized") {
+      setAvatarStatus("アップロード権限がありません。Firebaseコンソール→Storage→Rulesの設定をご確認ください。", true);
+    } else if (e.code === "storage/unknown" || /CORS/i.test(e.message || "")) {
+      setAvatarStatus("Storageへの接続に失敗しました。Firebaseコンソールで Storage が有効化されているかご確認ください。", true);
+    } else {
+      setAvatarStatus("画像の更新に失敗しました: " + e.message, true);
+    }
+  }
+}
+
+/* 画像ファイルを読み込み、指定した最大辺(maxSize)に収まるようcanvasで縮小してJPEG Blobにする */
+function resizeImageToBlob(file, maxSize, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("ファイルの読み込みに失敗しました"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxSize) {
+          height = Math.round(height * (maxSize / width));
+          width = maxSize;
+        } else if (height > maxSize) {
+          width = Math.round(width * (maxSize / height));
+          height = maxSize;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => (blob ? resolve(blob) : reject(new Error("画像の変換に失敗しました"))),
+          "image/jpeg",
+          quality
+        );
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/* =============================================================
+   5. プロフィール編集（ニックネーム・ひとこと）
    ============================================================= */
 function enterEditMode() {
   document.getElementById("editNickname").value = currentProfile.nickname;
@@ -675,7 +802,7 @@ async function saveProfile() {
 }
 
 /* =============================================================
-   5. 画面(タブ)切り替え
+   6. 画面(タブ)切り替え
    ============================================================= */
 function switchScreen(name) {
   document.querySelectorAll(".screen").forEach((el) => el.classList.remove("active"));
@@ -686,7 +813,7 @@ function switchScreen(name) {
 }
 
 /* =============================================================
-   6. PWA用のService Worker登録
+   7. PWA用のService Worker登録
    file://で開いた場合は登録できないため、その場合は静かにスキップする
    （httpsで公開(Vercel等)した後は自動的に有効になる）
    ============================================================= */
