@@ -705,11 +705,21 @@ async function onAvatarFileSelected(event) {
     return;
   }
 
+  const imgEl = document.getElementById("profileAvatarImg");
+  const previousSrc = imgEl.src; // アップロード失敗時に元へ戻すために保持
+
   try {
     setAvatarStatus("画像を処理中…", false);
-    const blob = await resizeImageToBlob(file, 400, 0.85);
+    const canvas = await loadResizedCanvas(file, 400);
 
+    // ★体感速度の改善ポイント:
+    // アップロード(通信)の完了を待たず、リサイズ済みの画像をこの時点で
+    // 画面にすぐ反映する。通信は裏側で並行して進める。
+    const previewDataUrl = canvas.toDataURL("image/jpeg", 0.85);
+    imgEl.src = previewDataUrl;
     setAvatarStatus("アップロード中…", false);
+
+    const blob = await canvasToBlob(canvas, 0.85);
     const uid = auth.currentUser.uid;
     const storageRef = storage.ref().child("avatars/" + uid + "/avatar.jpg");
     await storageRef.put(blob, { contentType: "image/jpeg" });
@@ -722,10 +732,13 @@ async function onAvatarFileSelected(event) {
     await db.collection(USERS_COLLECTION).doc(uid).update(updateData);
 
     currentProfile = { ...currentProfile, ...updateData };
-    renderProfile();
+    document.getElementById("viewUpdatedAt").textContent = formatTimestamp(updateData.updatedAt);
+    // 正式な保存先URLに差し替え（見た目はプレビューとほぼ同じなので切り替わりは分からない）
+    imgEl.src = downloadUrl;
     setAvatarStatus("画像を更新しました", false);
     setTimeout(() => setAvatarStatus("", false), 2500);
   } catch (e) {
+    imgEl.src = previousSrc; // 失敗時はプレビューを元に戻す
     if (e.code === "storage/unauthorized") {
       setAvatarStatus("アップロード権限がありません。Firebaseコンソール→Storage→Rulesの設定をご確認ください。", true);
     } else if (e.code === "storage/unknown" || /CORS/i.test(e.message || "")) {
@@ -736,8 +749,8 @@ async function onAvatarFileSelected(event) {
   }
 }
 
-/* 画像ファイルを読み込み、指定した最大辺(maxSize)に収まるようcanvasで縮小してJPEG Blobにする */
-function resizeImageToBlob(file, maxSize, quality) {
+/* 画像ファイルを読み込み、指定した最大辺(maxSize)に収まるようcanvasで縮小する */
+function loadResizedCanvas(file, maxSize) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("ファイルの読み込みに失敗しました"));
@@ -757,15 +770,22 @@ function resizeImageToBlob(file, maxSize, quality) {
         canvas.width = width;
         canvas.height = height;
         canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        canvas.toBlob(
-          (blob) => (blob ? resolve(blob) : reject(new Error("画像の変換に失敗しました"))),
-          "image/jpeg",
-          quality
-        );
+        resolve(canvas);
       };
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
+  });
+}
+
+/* canvasをJPEG Blobに変換する（Storageへのアップロード用） */
+function canvasToBlob(canvas, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("画像の変換に失敗しました"))),
+      "image/jpeg",
+      quality
+    );
   });
 }
 
