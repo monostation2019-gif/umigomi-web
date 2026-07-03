@@ -1,98 +1,1630 @@
-# 海ゴミ探究ノート（HTML/JS版）v1.1
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>海ゴミ探究ノート</title>
+<meta name="description" content="伊勢志摩の海ゴミを記録・共有するPWAアプリ「海ゴミ探究ノート」">
+<meta name="theme-color" content="#1B3A6B">
 
-ターミナルもインストール作業も不要です。ファイルを編集して、Vercelにアップロードするだけで動きます。
+<!-- PWA設定ファイル -->
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="icons/Icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="うみごみ">
 
-## 構成
-```
-umigomi_web/
-├── index.html      ← アプリ本体（これ1つに画面・処理すべてが入っています）
-├── manifest.json    ← PWA設定
-├── sw.js            ← オフライン対応（そのままでOK、触らなくて大丈夫）
-├── favicon.png
-└── icons/           ← アプリアイコン・初期プロフィール画像
-```
+<style>
+  /* =========================================================
+     全体のスタイル定義
+     Material Design風のシンプルな配色・角丸・影を使用。
+     後から機能追加してもデザインが崩れにくいよう、
+     色や余白は CSS変数(:root) にまとめている。
+     ========================================================= */
+  :root {
+    --color-primary: #2E7D6B;      /* 海藻・波打ち際をイメージした落ち着いたティール */
+    --color-primary-light: #E3EFE9;
+    --color-surface: #FCFBF7;      /* 純白を避けたやわらかいオフホワイト */
+    --color-bg: #F1F0E8;           /* 目に優しい、砂浜のようなウォームグレー */
+    --color-text: #2B2E2C;         /* 純黒を避けた深いグレー */
+    --color-text-sub: #6E7570;
+    --color-outline: #DEDDD2;
+    --color-indigo: #1B3A6B;       /* 藍色: ヘッダー・フッターの背景 */
+    --color-indigo-icon: rgba(255, 255, 255, 0.65); /* 藍色背景上の非アクティブなアイコン */
+    --nav-height: 64px;
+    --header-height: 56px;
+  }
 
-## v1.1で実装済みの機能
+  * { box-sizing: border-box; }
 
-- ログイン（Googleログイン／ゲスト（匿名）ログイン）・自動ログイン
-- ホーム画面（歓迎メッセージ・記録件数・ショートカット・使い方）
-- プロフィール画面（ニックネーム・ひとこと・画像変更）
-- **地図画面**：みんなが記録したゴミをピンで表示（OpenStreetMap + Leaflet.js）
-- **記録一覧画面**：みんなの記録を新しい順に一覧表示
-- **記録の追加**：写真（必須）・種類（6カテゴリ）・場所（GPS自動取得＋地図タップで手動修正）・ひとことメモ（任意）を記録
-- 記録の詳細表示（一覧・地図のピンどちらからも開ける）
-- 藍色ヘッダー・ボトムナビのデザイン
+  body {
+    margin: 0;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+    background: var(--color-bg);
+    color: var(--color-text);
+    /* iPhoneのノッチ・ホームバー対応（Safe Area） */
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 
-すべての記録は**全ユーザーで共有**され、誰でも地図・一覧で見られます（投稿者名も表示されます）。
+  /* ---------- ヘッダー ---------- */
+  header.app-bar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    height: var(--header-height);
+    background: var(--color-indigo);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 16px;
+    border-bottom: 1px solid var(--color-indigo);
+    padding-top: env(safe-area-inset-top);
+  }
 
-## セットアップ手順
+  /* ---------- 画面(タブ)の切り替え ---------- */
+  /* .screen は基本非表示。.screen.active のときだけ表示する。 */
+  main {
+    max-width: 600px; /* レスポンシブ: 大画面でも横幅を制限して読みやすくする */
+    margin: 0 auto;
+    padding: 24px 16px calc(var(--nav-height) + 24px);
+    min-height: calc(100vh - var(--header-height));
+  }
+  .screen { display: none; }
+  .screen.active { display: block; animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-### ① Firebaseの接続情報を書き込む
+  /* ---------- ホーム画面 ---------- */
+  .hero {
+    text-align: center;
+    padding: 48px 16px;
+  }
+  .hero .material-emoji { font-size: 48px; }
+  .hero h1 { font-size: 20px; margin: 12px 0 4px; }
+  .hero p { color: var(--color-text-sub); margin: 0; }
 
-1. `index.html` を **メモ帳（またはVSCode）** で開く
-2. `Ctrl + F` で `REPLACE_ME` を検索する（6箇所あります）
-3. Firebaseコンソール（https://console.firebase.google.com）を開き、
-   - 左上の**⚙️歯車アイコン → プロジェクトの設定**をクリック
-   - 下の方の「マイアプリ」に、既にWebアプリが登録されていればそれをクリック
-     （無ければ `</>` アイコンをクリックして新規登録）
-   - 表示される `firebaseConfig = { ... }` の中身をまるごとコピー
-4. `index.html` 内の該当部分を、コピーした内容で置き換えて保存する
+  /* ---------- ホーム: 記録サマリーカード ---------- */
+  .home-stats-card {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+  }
+  .stat-item { text-align: center; }
+  .stat-value { font-size: 32px; font-weight: bold; color: var(--color-primary); line-height: 1.1; }
+  .stat-label { font-size: 12px; color: var(--color-text-sub); margin-top: 4px; }
 
-### ② Firebaseコンソールで設定する項目
+  /* ---------- ホーム: ショートカットカード ---------- */
+  .shortcut-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .shortcut-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-outline);
+    border-radius: 16px;
+    padding: 20px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .shortcut-card:active { background: var(--color-primary-light); }
+  .shortcut-icon { font-size: 28px; }
+  .shortcut-label { font-size: 13px; font-weight: bold; color: var(--color-text); }
 
-- **Authentication → Sign-in method**
-  - 「匿名」を有効化
-  - 「Google」を有効化（Googleログインを使う場合）
-- **Firestore Database** を作成する（無ければ「データベースを作成」）
-- **Firestore Database → ルール** タブで、以下を貼り付けて「公開」
+  /* ---------- ホーム: 使い方カード ---------- */
+  .section-title { font-size: 15px; margin: 0 0 12px; }
+  .howto-list {
+    margin: 0;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .howto-list li { font-size: 14px; line-height: 1.5; }
+  .badge-soon {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 10px;
+    color: var(--color-text-sub);
+    background: var(--color-bg);
+    border: 1px solid var(--color-outline);
+    border-radius: 10px;
+    padding: 1px 8px;
+    vertical-align: middle;
+  }
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
-    }
-    match /records/{recordId} {
-      allow read: if true;
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.uid;
-      allow update, delete: if request.auth != null && request.auth.uid == resource.data.uid;
+  /* ---------- プレースホルダー画面(地図・記録一覧) ---------- */
+  .placeholder {
+    text-align: center;
+    padding: 64px 16px;
+    color: var(--color-text-sub);
+  }
+  .placeholder .icon { font-size: 48px; opacity: 0.5; }
+
+  /* ---------- カード共通 ---------- */
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-outline);
+    border-radius: 16px;
+    padding: 16px;
+  }
+
+  /* ---------- プロフィール画面 ---------- */
+  .profile-avatar-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 24px;
+  }
+  .avatar-inner {
+    position: relative;
+    width: 96px;
+    height: 96px;
+  }
+  .profile-avatar {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--color-primary-light);
+    border: 2px solid var(--color-primary);
+    cursor: pointer;
+  }
+  .avatar-edit-badge {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    border: 2px solid var(--color-surface);
+    cursor: pointer;
+  }
+  .avatar-status {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--color-text-sub);
+    min-height: 16px;
+  }
+  .avatar-status.error { color: #B00020; }
+  .avatar-uploading-overlay {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .spinner.small { width: 22px; height: 22px; border-width: 2px; border-top-color: #fff; }
+  .info-row { padding: 10px 0; border-bottom: 1px solid var(--color-outline); }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .label { font-size: 12px; color: var(--color-text-sub); }
+  .info-row .value { font-size: 15px; margin-top: 2px; word-break: break-all; }
+  .edit-form input, .edit-form textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--color-outline);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    margin-top: 4px;
+    margin-bottom: 12px;
+  }
+  .btn {
+    display: inline-block;
+    background: var(--color-primary);
+    color: #fff;
+    border: none;
+    border-radius: 24px;
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .btn:active { opacity: 0.8; }
+  .btn-text {
+    background: none;
+    border: none;
+    color: var(--color-primary);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 8px;
+  }
+
+  /* ---------- ボトムナビゲーション ---------- */
+  nav.bottom-nav {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    height: calc(var(--nav-height) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--color-indigo);
+    border-top: 1px solid var(--color-indigo);
+    display: flex;
+    z-index: 10;
+  }
+  nav.bottom-nav button {
+    flex: 1;
+    background: none;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--color-indigo-icon);
+    cursor: pointer;
+    padding: 4px 0;
+  }
+  nav.bottom-nav button .nav-icon { font-size: 20px; }
+  nav.bottom-nav button.active { color: #fff; font-weight: bold; }
+
+  /* ---------- ローディング/エラー(スプラッシュ) ---------- */
+  #splash {
+    position: fixed;
+    inset: 0;
+    background: var(--color-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 100;
+  }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--color-outline);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #splash.hidden { display: none; }
+  #splash .error-box { text-align: center; color: #B00020; padding: 0 24px; }
+
+  /* ---------- ログイン画面 ---------- */
+  #loginScreen {
+    position: fixed;
+    inset: 0;
+    background: var(--color-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 90;
+  }
+  #loginScreen.hidden { display: none; }
+  .login-box {
+    width: 100%;
+    max-width: 340px;
+    padding: 32px 24px;
+    text-align: center;
+  }
+  .login-box .material-emoji { font-size: 48px; }
+  .login-box h1 { font-size: 20px; margin: 12px 0 4px; }
+  .login-box p { color: var(--color-text-sub); font-size: 13px; margin: 0 0 28px; }
+  .login-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 24px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-bottom: 12px;
+    border: 1px solid var(--color-outline);
+  }
+  .login-btn:active { opacity: 0.8; }
+  .login-btn.google { background: var(--color-surface); color: var(--color-text); }
+  .login-btn.google svg { width: 18px; height: 18px; }
+  .login-btn.guest { background: none; color: var(--color-primary); border: 1px solid var(--color-primary); }
+  .login-btn.guest .nav-icon { font-size: 18px; }
+  #loginError {
+    color: #B00020;
+    font-size: 12px;
+    margin-top: 8px;
+    display: none;
+    white-space: pre-line;
+  }
+
+  /* ---------- 地図画面 ---------- */
+  /* mainの左右上下パディングを打ち消して画面いっぱいに地図を表示する */
+  .map-container {
+    height: calc(100vh - var(--header-height) - var(--nav-height) - 48px);
+    min-height: 320px;
+    margin: -24px -16px;
+    background: var(--color-outline); /* 読み込み中に見える背景色 */
+  }
+
+  /* ---------- 右下の「＋」ボタン（記録追加） ---------- */
+  .fab {
+    position: fixed;
+    right: 20px;
+    bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + 16px);
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--color-indigo);
+    color: #fff;
+    font-size: 26px;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+    z-index: 20;
+  }
+  .fab:active { opacity: 0.85; }
+
+  /* ---------- 記録一覧画面 ---------- */
+  .records-list { display: flex; flex-direction: column; gap: 12px; }
+  .record-card {
+    display: flex;
+    gap: 12px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-outline);
+    border-radius: 16px;
+    padding: 10px;
+    cursor: pointer;
+    text-align: left;
+  }
+  .record-card-thumb {
+    width: 64px;
+    height: 64px;
+    border-radius: 12px;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: var(--color-bg);
+  }
+  .record-card-body { min-width: 0; }
+  .record-card-category { font-size: 13px; font-weight: bold; }
+  .record-card-meta { font-size: 12px; color: var(--color-text-sub); margin-top: 2px; }
+  .record-card-memo {
+    font-size: 12px;
+    color: var(--color-text-sub);
+    margin-top: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ---------- モーダル共通（記録追加・記録詳細） ---------- */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 80;
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal-box {
+    background: var(--color-surface);
+    width: 100%;
+    max-width: 480px;
+    max-height: 88vh;
+    border-radius: 20px 20px 0 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 16px 8px;
+    border-bottom: 1px solid var(--color-outline);
+  }
+  .modal-header h2 { font-size: 16px; margin: 0; }
+  .modal-close { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--color-text-sub); }
+  .modal-body { padding: 16px; overflow-y: auto; }
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--color-outline);
+  }
+
+  /* ---------- 記録追加フォームの部品 ---------- */
+  .field-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: bold;
+    margin: 16px 0 8px;
+  }
+  .field-label:first-child { margin-top: 0; }
+  .field-hint { font-size: 11px; color: var(--color-text-sub); margin: -4px 0 8px; }
+  .required, .optional {
+    font-size: 10px;
+    font-weight: normal;
+    border-radius: 10px;
+    padding: 1px 8px;
+  }
+  .required { color: #B00020; background: #FDECEA; }
+  .optional { color: var(--color-text-sub); background: var(--color-bg); }
+  .btn-text.small { font-size: 12px; padding: 4px; margin-left: auto; }
+
+  .record-photo-picker {
+    height: 160px;
+    border: 2px dashed var(--color-outline);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-sub);
+    font-size: 13px;
+    cursor: pointer;
+    overflow: hidden;
+  }
+  .record-photo-picker img { width: 100%; height: 100%; object-fit: cover; }
+
+  .category-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    border: 1px solid var(--color-outline);
+    background: var(--color-surface);
+    border-radius: 20px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .chip.selected {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+    font-weight: bold;
+  }
+
+  .mini-map {
+    height: 180px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--color-outline);
+  }
+
+  .detail-photo {
+    width: 100%;
+    max-height: 240px;
+    object-fit: cover;
+    border-radius: 12px;
+    margin-bottom: 16px;
+    background: var(--color-bg);
+  }
+</style>
+  <!-- 地図表示用ライブラリ(Leaflet.js)のスタイル -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+</head>
+<body>
+
+<!-- ============================================================
+     起動時のスプラッシュ（ログイン処理が終わるまで表示）
+     ============================================================ -->
+<div id="splash">
+  <div class="spinner"></div>
+  <div>準備中…</div>
+  <div class="error-box" id="splashError" style="display:none;"></div>
+</div>
+
+<!-- ============================================================
+     ログイン画面（未ログイン時に表示）
+     ============================================================ -->
+<div id="loginScreen" class="hidden">
+  <div class="login-box">
+    <div class="material-emoji">🌊</div>
+    <h1>海ゴミ探究ノート</h1>
+    <p>伊勢志摩の海ゴミを記録・共有するアプリです。<br>ログインして始めましょう。</p>
+
+    <button class="login-btn google" onclick="loginWithGoogle()">
+      <svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.9 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.1 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.9 1.1 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4c-7.7 0-14.3 4.3-17.7 10.7z"/><path fill="#4CAF50" d="M24 44c5.4 0 10.3-1.9 14-5.1l-6.5-5.4c-2 1.4-4.6 2.3-7.5 2.3-5.3 0-9.7-3.1-11.3-7.5l-6.6 5.1C9.6 39.6 16.3 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.3 5.7l6.5 5.4C41.4 36.6 44 30.9 44 24c0-1.3-.1-2.7-.4-3.5z"/></svg>
+      Googleでログイン
+    </button>
+
+    <button class="login-btn guest" onclick="loginAsGuest()">
+      <span class="nav-icon">👤</span>
+      ゲストとして利用する（お試し）
+    </button>
+
+    <div id="loginError"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     記録追加モーダル（地図・記録一覧の「＋」から開く）
+     ============================================================ -->
+<div id="recordFormModal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>ゴミを記録する</h2>
+      <button class="modal-close" onclick="closeAddRecordModal()">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <!-- 写真（必須） -->
+      <label class="field-label">写真<span class="required">必須</span></label>
+      <div class="record-photo-picker" id="recordPhotoPicker" onclick="document.getElementById('recordPhotoInput').click();">
+        <span id="recordPhotoPlaceholder">📷 タップして撮影・写真を選択</span>
+        <img id="recordPhotoPreview" style="display:none;" alt="選択した写真のプレビュー">
+      </div>
+      <input type="file" id="recordPhotoInput" accept="image/*" capture="environment" style="display:none" onchange="onRecordPhotoSelected(event)">
+
+      <!-- カテゴリ（必須） -->
+      <label class="field-label">ゴミの種類<span class="required">必須</span></label>
+      <div class="category-chips" id="categoryChips"></div>
+
+      <!-- 位置情報（必須） -->
+      <label class="field-label">
+        場所<span class="required">必須</span>
+        <button class="btn-text small" onclick="useCurrentLocationForForm()">📍 現在地を取得しなおす</button>
+      </label>
+      <p class="field-hint">ピンが違う場所を指していたら、地図をタップして動かせます。</p>
+      <div id="recordLocationMap" class="mini-map"></div>
+      <div id="recordLocationStatus" class="avatar-status"></div>
+
+      <!-- ひとことメモ（任意） -->
+      <label class="field-label">ひとことメモ<span class="optional">任意</span></label>
+      <textarea id="recordMemo" rows="2" maxlength="100" placeholder="気づいたことがあれば"></textarea>
+
+      <div id="recordFormStatus" class="avatar-status"></div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-text" onclick="closeAddRecordModal()">キャンセル</button>
+      <button class="btn" onclick="saveRecord()">記録する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     記録詳細モーダル（一覧のカード・地図のピンをタップすると開く）
+     ============================================================ -->
+<div id="recordDetailModal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>記録の詳細</h2>
+      <button class="modal-close" onclick="closeRecordDetail()">✕</button>
+    </div>
+    <div class="modal-body">
+      <img id="detailPhoto" class="detail-photo" alt="記録された写真">
+      <div class="info-row">
+        <div class="label">ゴミの種類</div>
+        <div class="value" id="detailCategory">-</div>
+      </div>
+      <div class="info-row">
+        <div class="label">記録した人</div>
+        <div class="value" id="detailNickname">-</div>
+      </div>
+      <div class="info-row">
+        <div class="label">記録日時</div>
+        <div class="value" id="detailCreatedAt">-</div>
+      </div>
+      <div class="info-row" id="detailMemoRow">
+        <div class="label">ひとことメモ</div>
+        <div class="value" id="detailMemo">-</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-text" onclick="closeRecordDetail()">閉じる</button>
+      <button class="btn" onclick="viewCurrentDetailOnMap()">地図で見る</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     ヘッダー
+     ============================================================ -->
+<header class="app-bar" id="appHeader">海ゴミ探究ノート</header>
+
+<!-- ============================================================
+     各画面（タブ）
+     ============================================================ -->
+<main>
+
+  <!-- ホーム -->
+  <section class="screen active" id="screen-home">
+    <div class="hero">
+      <div class="material-emoji">🌊</div>
+      <h1 id="homeGreeting">ようこそ！</h1>
+      <p>伊勢志摩の海ゴミを記録・共有するアプリです。</p>
+    </div>
+
+    <!-- 記録サマリー（今はプレースホルダー。記録機能ができたら実際の件数に差し替え予定） -->
+    <div class="card home-stats-card">
+      <div class="stat-item">
+        <div class="stat-value" id="statRecordCount">0</div>
+        <div class="stat-label">これまでの記録</div>
+      </div>
+    </div>
+
+    <!-- 他のタブへのショートカット -->
+    <div class="shortcut-grid">
+      <button class="shortcut-card" onclick="switchScreen('map')">
+        <span class="shortcut-icon">🗺️</span>
+        <span class="shortcut-label">地図を見る</span>
+      </button>
+      <button class="shortcut-card" onclick="switchScreen('records')">
+        <span class="shortcut-icon">📋</span>
+        <span class="shortcut-label">記録一覧を見る</span>
+      </button>
+    </div>
+
+    <!-- 使い方 -->
+    <div class="card home-howto-card">
+      <h2 class="section-title">使い方</h2>
+      <ol class="howto-list">
+        <li>海岸で見つけたゴミを記録する<span class="badge-soon">準備中</span></li>
+        <li>地図でみんなの記録を確認する<span class="badge-soon">準備中</span></li>
+        <li>プロフィールで自分の活動をふりかえる</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 地図: みんなが記録したゴミをピンで表示 -->
+  <section class="screen" id="screen-map">
+    <div id="mapContainer" class="map-container"></div>
+    <button class="fab" onclick="openAddRecordModal()">＋</button>
+  </section>
+
+  <!-- 記録一覧: みんなの記録を新しい順に一覧表示 -->
+  <section class="screen" id="screen-records">
+    <div id="recordsList" class="records-list"></div>
+    <div id="recordsEmpty" class="placeholder" style="display:none;">
+      <div class="icon">📋</div>
+      <p>まだ記録がありません。<br>右下の「＋」から最初の記録を投稿してみましょう。</p>
+    </div>
+    <button class="fab" onclick="openAddRecordModal()">＋</button>
+  </section>
+
+  <!-- プロフィール -->
+  <section class="screen" id="screen-profile">
+    <div class="profile-avatar-wrap">
+      <div class="avatar-inner">
+        <img class="profile-avatar" id="profileAvatarImg" src="icons/default_avatar.png" alt="プロフィール画像"
+             onclick="document.getElementById('avatarFileInput').click();">
+        <div class="avatar-edit-badge" onclick="document.getElementById('avatarFileInput').click();">📷</div>
+        <div class="avatar-uploading-overlay" id="avatarUploadingOverlay" style="display:none;">
+          <div class="spinner small"></div>
+        </div>
+      </div>
+      <!-- 実際に画面には表示せず、タップ時にOSの写真選択(アルバム/カメラ)を開くための入力欄 -->
+      <input type="file" id="avatarFileInput" accept="image/*" style="display:none" onchange="onAvatarFileSelected(event)">
+      <div id="avatarStatus" class="avatar-status"></div>
+    </div>
+
+    <!-- 表示モード -->
+    <div class="card" id="profileViewCard">
+      <div class="info-row">
+        <div class="label">ニックネーム</div>
+        <div class="value" id="viewNickname">-</div>
+      </div>
+      <div class="info-row">
+        <div class="label">ひとこと</div>
+        <div class="value" id="viewComment">-</div>
+      </div>
+      <div class="info-row">
+        <div class="label">作成日時</div>
+        <div class="value" id="viewCreatedAt">-</div>
+      </div>
+      <div class="info-row">
+        <div class="label">更新日時</div>
+        <div class="value" id="viewUpdatedAt">-</div>
+      </div>
+      <div class="info-row">
+        <div class="label">ログイン方法</div>
+        <div class="value" id="viewAuthMethod">-</div>
+      </div>
+      <div style="text-align:right; margin-top:12px;">
+        <button class="btn-text" onclick="logout()">ログアウト</button>
+        <button class="btn" onclick="enterEditMode()">編集する</button>
+      </div>
+    </div>
+
+    <!-- 編集モード（普段は非表示） -->
+    <div class="card edit-form" id="profileEditCard" style="display:none;">
+      <label>ニックネーム</label>
+      <input type="text" id="editNickname" maxlength="20">
+      <label>ひとこと</label>
+      <textarea id="editComment" rows="3" maxlength="100"></textarea>
+      <div style="text-align:right;">
+        <button class="btn-text" onclick="cancelEditMode()">キャンセル</button>
+        <button class="btn" onclick="saveProfile()">保存する</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============================================================
+     ボトムナビゲーション
+     ============================================================ -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-screen="home" onclick="switchScreen('home')">
+    <span class="nav-icon">🏠</span><span>ホーム</span>
+  </button>
+  <button class="nav-btn" data-screen="map" onclick="switchScreen('map')">
+    <span class="nav-icon">🗺️</span><span>地図</span>
+  </button>
+  <button class="nav-btn" data-screen="records" onclick="switchScreen('records')">
+    <span class="nav-icon">📋</span><span>記録一覧</span>
+  </button>
+  <button class="nav-btn" data-screen="profile" onclick="switchScreen('profile')">
+    <span class="nav-icon">👤</span><span>プロフィール</span>
+  </button>
+</nav>
+
+<!-- ============================================================
+     Firebase SDK（compat版=グローバル変数方式）
+     ES Modules(import文)を使わないため、file://で直接開いても
+     CORSエラーが出にくく、初心者でも動作確認しやすい。
+     ============================================================ -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
+
+<!-- 地図表示用ライブラリ(Leaflet.js)本体 -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" onerror="window.__sdkLoadFailed=true;"></script>
+
+<script>
+/* =============================================================
+   起動時の安全装置:
+   ・Firebase SDKの読み込みに失敗した場合
+   ・script内でエラーが起きて処理が止まった場合
+   ・何らかの理由で一定時間たっても画面が切り替わらない場合
+   これらすべてで「準備中…」のまま固まらず、原因をエラー表示する。
+   ============================================================= */
+window.addEventListener("error", function (e) {
+  showSplashError("エラーが発生しました: " + (e.message || e));
+});
+window.addEventListener("unhandledrejection", function (e) {
+  const msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
+  showSplashError("エラーが発生しました: " + msg);
+});
+setTimeout(function () {
+  const splash = document.getElementById("splash");
+  if (splash && !splash.classList.contains("hidden") && document.getElementById("splashError").style.display === "none") {
+    if (window.__sdkLoadFailed) {
+      showSplashError("Firebaseの読み込みに失敗しました。ネット接続、広告ブロッカー/セキュリティソフト、または https://www.gstatic.com へのアクセス制限をご確認ください。");
+    } else if (typeof firebase === "undefined") {
+      showSplashError("Firebase SDKが読み込めていません。ネット接続をご確認のうえ再読み込みしてください。");
+    } else {
+      showSplashError("初期化がタイムアウトしました。ネット接続、またはFirebaseプロジェクトの設定（APIキー等）をご確認ください。");
     }
   }
+}, 8000);
+</script>
+
+<script>
+
+/* =============================================================
+   ★★★ ここを自分のFirebaseプロジェクトの値に書き換えてください ★★★
+   取得場所: Firebaseコンソール →（歯車アイコン）プロジェクトの設定
+            → 「全般」タブ → 「マイアプリ」→ 該当のWebアプリ
+            → 「SDK の設定と構成」に表示されるオブジェクトをコピー
+   ============================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyDB_SCHBUHACDJSjmn6bY2rR8vc2Sabjpg",
+  authDomain: "umigomi-web.firebaseapp.com",
+  projectId: "umigomi-web",
+  storageBucket: "umigomi-web.firebasestorage.app",
+  messagingSenderId: "104498907704",
+  appId: "1:104498907704:web:eab43b09887d7d3fed34cd"
+};
+
+let auth, db, googleProvider;
+try {
+  firebase.initializeApp(firebaseConfig);
+  auth = firebase.auth();
+  db = firebase.firestore();
+  googleProvider = new firebase.auth.GoogleAuthProvider();
+
+  // 永続化方式を試す。IndexedDBがブロックされている環境では
+  // LOCALが失敗することがあるため、SESSION→NONEの順にフォールバックする。
+  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function () {
+    return auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+  }).catch(function () {
+    return auth.setPersistence(firebase.auth.Auth.Persistence.NONE);
+  }).catch(function (e) {
+    console.warn("永続化方式の設定に失敗:", e);
+  });
+} catch (e) {
+  showSplashError("Firebaseの初期化に失敗しました: " + e.message);
+  throw e;
 }
-```
 
-> Firebase Storageは使用していないため、設定不要です。
+/* =============================================================
+   定数（Firestoreのコレクション名・フィールド名を1箇所に集約）
+   ============================================================= */
+const USERS_COLLECTION = "users";
+const DEFAULT_NICKNAME = "ゲスト";
+const DEFAULT_COMMENT = "";
+const DEFAULT_ICON = "icons/default_avatar.png";
 
-## 動作確認の方法
+const RECORDS_COLLECTION = "records";
 
-**方法A（一番簡単）：そのままダブルクリックで開く**
-`index.html` をダブルクリックしてブラウザで開くだけで動作確認できます。
-（GPSの現在地取得は `file://` でも動きますが、うまくいかない場合は方法Bをお試しください）
+/* ゴミの分類。あとから種類を増やす場合はこの配列に追加するだけでよい
+   （記録フォームのチップ・一覧表示のどちらにも自動で反映される）。 */
+const CATEGORIES = [
+  { id: "plastic", label: "プラスチック類", emoji: "🥤" },
+  { id: "foam", label: "発泡スチロール", emoji: "📦" },
+  { id: "can_bottle", label: "缶・ビン", emoji: "🥫" },
+  { id: "fishing_gear", label: "漁具・ロープ類", emoji: "🎣" },
+  { id: "driftwood", label: "流木・自然物", emoji: "🪵" },
+  { id: "other", label: "その他", emoji: "🗑️" },
+];
+function categoryLabel(id) {
+  const found = CATEGORIES.find((c) => c.id === id);
+  return found ? found.emoji + " " + found.label : id;
+}
 
-**方法B（本番と同じ環境で確認したい場合）：Vercelにアップロード**
-`umigomi_web` フォルダを丸ごとVercelにドラッグ＆ドロップしてください。
+/* 伊勢志摩付近をデフォルトの地図中心地点にする */
+const DEFAULT_MAP_CENTER = [34.4700, 136.8300];
 
-## 動かない時のチェックリスト
+/* 現在のプロフィールをメモリ上にも保持しておく（編集フォームの初期値等に使う） */
+let currentProfile = null;
 
-| 症状 | 原因の可能性 |
-|---|---|
-| ずっと「準備中…」のまま | `REPLACE_ME` が残っている / Firebaseの値が間違っている |
-| 赤い文字でエラーが出る | エラー文をそのままコピーして質問してください |
-| ログインできない | Authentication の「匿名」または「Google」が無効になっている |
-| プロフィール・記録が表示されない／権限エラー | Firestore Database未作成、またはルール未設定（`records`のルールも追加されているか確認） |
-| 地図が真っ白・崩れて見える | インターネット接続を確認（地図タイルの読み込みに通信が必要です） |
-| 現在地が取得できない | ブラウザの位置情報許可がブロックされていないか確認。地図をタップして手動で場所を指定することもできます |
+/* アバター画像のアップロード中・記録の保存中かどうか。
+   trueの間にログアウト・タブを閉じる等が起きると保存が失敗するため、
+   この変数を見てそれらの操作を止める。 */
+let isAvatarUploading = false;
+let isRecordSaving = false;
+function isAnySaveInProgress() {
+  return isAvatarUploading || isRecordSaving;
+}
 
-## 今後の拡張予定（v1.2以降）
+/* 保存中にタブを閉じたり再読み込みされたりすると保存が途中で
+   打ち切られてしまうため、ブラウザ標準の確認ダイアログで警告する。 */
+window.addEventListener("beforeunload", (event) => {
+  if (isAnySaveInProgress()) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
+});
 
-- カテゴリの絞り込み表示（地図・一覧）
-- 自分の記録だけの絞り込み表示
-- 記録の削除・編集
-- 13カテゴリへの拡張
+/* =============================================================
+   1. 認証
+   起動時に自動ログインはしない。ログイン済みならそのまま画面へ、
+   未ログインならログイン画面（Google / ゲスト）を表示する。
 
-## 変更履歴
+   注意: 環境によっては（ブラウザのプライバシー設定・拡張機能等で
+   IndexedDBがブロックされている場合など）onAuthStateChangedが
+   永久に発火しないことがある。その場合でも操作不能にならないよう、
+   一定時間で強制的にログイン画面へ進める。
+   ============================================================= */
+let authStateResolved = false;
 
-- **v1.1**：地図・記録一覧・記録の追加（写真＋カテゴリ＋位置情報＋メモ）を実装
-- **v1.0**：ゲスト/Googleログイン、プロフィール（画像変更含む）、ホーム画面、ボトムナビの土台が完成
+auth.onAuthStateChanged(async (user) => {
+  authStateResolved = true;
+  if (user) {
+    // ログイン済み
+    try {
+      await loadOrCreateProfile(user);
+      subscribeToRecords();
+      hideSplash();
+      hideLoginScreen();
+    } catch (e) {
+      if (e.code === "unavailable" || /offline/i.test(e.message)) {
+        showSplashError("Firestoreデータベースに接続できません。\nFirebaseコンソール → Firestore Database で「データベースの作成」が完了しているかご確認ください（Authenticationとは別に作成が必要です）。");
+      } else if (e.code === "permission-denied") {
+        showSplashError("Firestoreへのアクセスが拒否されました。\nFirebaseコンソール → Firestore Database → ルール で読み書きが許可されているかご確認ください。");
+      } else {
+        showSplashError("データの取得に失敗しました: " + e.message);
+      }
+    }
+  } else {
+    // 未ログイン → ログイン画面を表示
+    hideSplash();
+    showLoginScreen();
+  }
+});
 
+// onAuthStateChangedが一定時間たっても発火しない場合、強制的にログイン画面へ
+setTimeout(function () {
+  if (!authStateResolved) {
+    hideSplash();
+    showLoginScreen();
+    showLoginError("初期状態の確認がタイムアウトしました。ログインは試せますが、うまくいかない場合はブラウザのプライバシー設定（IndexedDB/Cookieのブロック）や拡張機能をご確認ください。");
+  }
+}, 4000);
+
+function hideSplash() {
+  document.getElementById("splash").classList.add("hidden");
+}
+function showSplashError(message) {
+  const errBox = document.getElementById("splashError");
+  errBox.textContent = message + "\n（画面下部の手順でFirebase設定を確認してください）";
+  errBox.style.display = "block";
+  document.querySelector("#splash .spinner").style.display = "none";
+  document.querySelector("#splash div:nth-child(2)").style.display = "none";
+}
+
+function showLoginScreen() {
+  document.getElementById("loginScreen").classList.remove("hidden");
+}
+function hideLoginScreen() {
+  document.getElementById("loginScreen").classList.add("hidden");
+}
+function showLoginError(message) {
+  const errBox = document.getElementById("loginError");
+  errBox.textContent = message;
+  errBox.style.display = "block";
+}
+function clearLoginError() {
+  const errBox = document.getElementById("loginError");
+  errBox.style.display = "none";
+  errBox.textContent = "";
+}
+
+/* Googleでログイン（ポップアップ方式） */
+async function loginWithGoogle() {
+  clearLoginError();
+  try {
+    await auth.signInWithPopup(googleProvider);
+    // 成功すると onAuthStateChanged が呼ばれて画面が切り替わる
+  } catch (e) {
+    if (e.code === "auth/popup-closed-by-user" || e.code === "auth/cancelled-popup-request") {
+      return; // ユーザーがポップアップを閉じただけなのでエラー表示不要
+    }
+    if (e.code === "auth/popup-blocked") {
+      showLoginError("ポップアップがブロックされました。ブラウザの設定を確認してください。");
+      return;
+    }
+    if (e.code === "auth/operation-not-allowed") {
+      showLoginError("Googleログインが有効になっていません。\nFirebaseコンソール → Authentication → Sign-in method でGoogleを有効にしてください。");
+      return;
+    }
+    showLoginError("ログインに失敗しました: " + e.message);
+  }
+}
+
+/* ゲスト（匿名）としてログイン */
+async function loginAsGuest() {
+  clearLoginError();
+  try {
+    await auth.signInAnonymously();
+  } catch (e) {
+    if (e.code === "auth/operation-not-allowed") {
+      showLoginError("匿名ログインが無効になっています。\nGoogleログインをご利用ください。");
+      return;
+    }
+    showLoginError("ログインに失敗しました: " + e.message);
+  }
+}
+
+/* ログアウト */
+async function logout() {
+  if (isAnySaveInProgress()) {
+    alert("保存処理が完了していません。完了してからログアウトしてください（あと数秒お待ちください）。");
+    return;
+  }
+  await auth.signOut();
+  currentProfile = null;
+  switchScreen("home");
+}
+
+/* =============================================================
+   2. Firestore: プロフィールの取得 or 初期作成
+   ============================================================= */
+async function loadOrCreateProfile(user) {
+  const uid = user.uid;
+  const docRef = db.collection(USERS_COLLECTION).doc(uid);
+  const snapshot = await docRef.get();
+
+  // ログイン方法（Google / ゲスト）を判定
+  const providerId = user.providerData[0] ? user.providerData[0].providerId : "anonymous";
+  const authMethod = providerId === "google.com" ? "Google" : "ゲスト（匿名）";
+
+  if (snapshot.exists) {
+    currentProfile = snapshot.data();
+    currentProfile.authMethod = authMethod;
+  } else {
+    // 初回ログイン: 初期プロフィールを作成
+    // Googleログインの場合はアカウントの表示名・写真を初期値として使う
+    const now = firebase.firestore.Timestamp.now();
+    currentProfile = {
+      uid: uid,
+      nickname: (providerId === "google.com" && user.displayName) ? user.displayName : DEFAULT_NICKNAME,
+      iconUrl: (providerId === "google.com" && user.photoURL) ? user.photoURL : DEFAULT_ICON,
+      comment: DEFAULT_COMMENT,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await docRef.set(currentProfile);
+    currentProfile.authMethod = authMethod;
+  }
+  renderProfile();
+}
+
+/* =============================================================
+   3. プロフィール画面への反映
+   ============================================================= */
+function renderProfile() {
+  if (!currentProfile) return;
+  document.getElementById("viewNickname").textContent = currentProfile.nickname;
+  document.getElementById("viewComment").textContent = currentProfile.comment || "（未設定）";
+  document.getElementById("viewCreatedAt").textContent = formatTimestamp(currentProfile.createdAt);
+  document.getElementById("viewUpdatedAt").textContent = formatTimestamp(currentProfile.updatedAt);
+  document.getElementById("profileAvatarImg").src = currentProfile.iconUrl || DEFAULT_ICON;
+  document.getElementById("viewAuthMethod").textContent = currentProfile.authMethod || "-";
+
+  // ホーム画面の歓迎メッセージにもニックネームを反映
+  const greetingEl = document.getElementById("homeGreeting");
+  if (greetingEl) {
+    greetingEl.textContent = "ようこそ、" + currentProfile.nickname + "さん！";
+  }
+}
+
+function formatTimestamp(ts) {
+  if (!ts) return "-";
+  const date = ts.toDate ? ts.toDate() : new Date(ts);
+  return date.toLocaleString("ja-JP");
+}
+
+/* =============================================================
+   4. プロフィール画像の変更
+   選んだ画像はそのままアップロードすると容量が大きいことがあるため、
+   canvasで一辺400px程度に縮小・JPEG圧縮してからFirebase Storageへ送る。
+   ============================================================= */
+function setAvatarStatus(message, isError) {
+  const el = document.getElementById("avatarStatus");
+  el.textContent = message || "";
+  el.classList.toggle("error", !!isError);
+}
+
+async function onAvatarFileSelected(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = ""; // 同じファイルを連続で選んでもchangeが発火するようにリセット
+  if (!file) return;
+
+  if (!file.type.startsWith("image/")) {
+    setAvatarStatus("画像ファイルを選んでください", true);
+    return;
+  }
+  // 極端に大きい元ファイル(20MB超)は読み込み負荷が高いため事前に弾く
+  if (file.size > 20 * 1024 * 1024) {
+    setAvatarStatus("ファイルサイズが大きすぎます（20MBまで）", true);
+    return;
+  }
+
+  const imgEl = document.getElementById("profileAvatarImg");
+  const previousSrc = imgEl.src; // 失敗時に元へ戻すために保持
+  const previousIconUrl = currentProfile ? currentProfile.iconUrl : DEFAULT_ICON;
+
+  isAvatarUploading = true;
+  document.getElementById("avatarUploadingOverlay").style.display = "flex";
+  try {
+    setAvatarStatus("画像を処理中…", false);
+
+    // 画像を小さく圧縮し、Firestoreの1ドキュメント上限(1MB)に収まる
+    // データURL(文字列)に変換する。大きすぎる場合は段階的に縮小して再試行する。
+    const dataUrl = await compressImageToDataUrl(file, AVATAR_COMPRESS_ATTEMPTS);
+
+    // 画面にすぐ反映する
+    imgEl.src = dataUrl;
+
+    // ★重要: Storageへのアップロード→URL取得→Firestore更新、という
+    // 3段階の通信をやめ、圧縮した画像データを直接Firestoreに書き込む
+    // 「1回の保存」だけで完結させている。保存が一瞬で終わるため、
+    // 保存の途中でアプリを閉じる／ログアウトすることによる
+    // 「画像だけ保存されない」不具合がほぼ起きなくなる。
+    setAvatarStatus("保存中…", false);
+    const uid = auth.currentUser.uid;
+    const updateData = {
+      iconUrl: dataUrl,
+      updatedAt: firebase.firestore.Timestamp.now(),
+    };
+    await db.collection(USERS_COLLECTION).doc(uid).update(updateData);
+
+    currentProfile = { ...currentProfile, ...updateData };
+    document.getElementById("viewUpdatedAt").textContent = formatTimestamp(updateData.updatedAt);
+    setAvatarStatus("画像を更新しました", false);
+    setTimeout(() => setAvatarStatus("", false), 2500);
+  } catch (e) {
+    imgEl.src = previousSrc; // 失敗時はプレビューを元に戻す
+    currentProfile = { ...currentProfile, iconUrl: previousIconUrl }; // 裏側のデータも元に戻す
+    if (e.code === "permission-denied") {
+      setAvatarStatus("保存の権限がありません。Firestoreのルール設定をご確認ください。", true);
+    } else if (e.message === "IMAGE_TOO_LARGE") {
+      setAvatarStatus("この画像は圧縮しても大きすぎるため保存できませんでした。別の画像をお試しください。", true);
+    } else {
+      setAvatarStatus("画像の更新に失敗しました: " + e.message, true);
+    }
+  } finally {
+    isAvatarUploading = false;
+    document.getElementById("avatarUploadingOverlay").style.display = "none";
+  }
+}
+
+/* 画像ファイルを読み込み、指定した最大辺(maxSize)に収まるようcanvasで縮小する */
+function loadResizedCanvas(file, maxSize) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("ファイルの読み込みに失敗しました"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxSize) {
+          height = Math.round(height * (maxSize / width));
+          width = maxSize;
+        } else if (height > maxSize) {
+          width = Math.round(width * (maxSize / height));
+          height = maxSize;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/* =============================================================
+   画像をFirestoreに直接保存できるサイズまで圧縮する。
+   Firestoreの1ドキュメントは1MBまでという制限があるため、
+   余裕を持って「データURL文字列で700KB」を上限とし、
+   それでも大きい場合は段階的に縮小・低画質化して再試行する。
+   ============================================================= */
+const MAX_DATA_URL_LENGTH = 700 * 1024; // 約700KB分の文字数
+
+/* アバター用の縮小設定（正方形に近い小さいアイコンなので控えめなサイズでよい） */
+const AVATAR_COMPRESS_ATTEMPTS = [
+  [400, 0.85],
+  [400, 0.6],
+  [280, 0.6],
+  [200, 0.5],
+];
+/* 記録写真用の縮小設定（現場の様子が分かるよう少し大きめに） */
+const RECORD_PHOTO_COMPRESS_ATTEMPTS = [
+  [640, 0.8],
+  [640, 0.6],
+  [480, 0.6],
+  [320, 0.5],
+];
+
+async function compressImageToDataUrl(file, attempts) {
+  // [辺の最大サイズ, JPEG品質] の組み合わせを、大きい順→小さい順に試す
+  for (const [maxSize, quality] of attempts) {
+    const canvas = await loadResizedCanvas(file, maxSize);
+    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+    if (dataUrl.length <= MAX_DATA_URL_LENGTH) {
+      return dataUrl;
+    }
+  }
+  // 一番小さい設定でも収まらなかった場合はエラーとして扱う
+  throw new Error("IMAGE_TOO_LARGE");
+}
+
+/* =============================================================
+   5. プロフィール編集（ニックネーム・ひとこと）
+   ============================================================= */
+function enterEditMode() {
+  document.getElementById("editNickname").value = currentProfile.nickname;
+  document.getElementById("editComment").value = currentProfile.comment || "";
+  document.getElementById("profileViewCard").style.display = "none";
+  document.getElementById("profileEditCard").style.display = "block";
+}
+function cancelEditMode() {
+  document.getElementById("profileViewCard").style.display = "block";
+  document.getElementById("profileEditCard").style.display = "none";
+}
+async function saveProfile() {
+  const uid = auth.currentUser.uid;
+  const nickname = document.getElementById("editNickname").value.trim() || DEFAULT_NICKNAME;
+  const comment = document.getElementById("editComment").value.trim();
+
+  const updateData = {
+    nickname: nickname,
+    comment: comment,
+    updatedAt: firebase.firestore.Timestamp.now(),
+  };
+
+  await db.collection(USERS_COLLECTION).doc(uid).update(updateData);
+
+  // ローカルの表示も即時反映
+  currentProfile = { ...currentProfile, ...updateData };
+  renderProfile();
+  cancelEditMode();
+}
+
+/* =============================================================
+   6. 記録機能（地図・記録一覧・記録の追加・詳細表示）
+   ============================================================= */
+
+/* 取得済みの記録をキャッシュしておく（一覧描画・詳細表示・地図ピンで共有） */
+let recordsCache = {}; // { docId: recordData }
+let currentDetailRecordId = null;
+
+let mainMap = null;           // 地図タブのLeafletマップ本体
+let mainMarkersLayer = null;  // 地図タブ上のピンをまとめて管理するレイヤー
+const mainMarkersById = {};   // { docId: L.Marker }
+
+let formMap = null;           // 記録追加モーダル内のミニ地図
+let formMarker = null;        // ミニ地図上の位置指定マーカー
+
+let selectedCategoryId = null;
+let selectedPhotoDataUrl = null;
+
+/* -------------------------------------------------------------
+   Firestoreの records コレクションをリアルタイム監視する。
+   ログイン成功後に一度だけ呼び出す。以後は新しい記録が追加されるたび
+   自動的に地図・一覧・ホームの件数表示が更新される。
+   ------------------------------------------------------------- */
+function subscribeToRecords() {
+  db.collection(RECORDS_COLLECTION)
+    .orderBy("createdAt", "desc")
+    .onSnapshot(
+      (snapshot) => {
+        recordsCache = {};
+        snapshot.forEach((doc) => {
+          recordsCache[doc.id] = doc.data();
+        });
+        renderRecordsList();
+        renderMapMarkers();
+        updateHomeRecordCount();
+      },
+      (error) => {
+        console.warn("記録の取得に失敗しました:", error);
+      }
+    );
+}
+
+function updateHomeRecordCount() {
+  const el = document.getElementById("statRecordCount");
+  if (el) el.textContent = String(Object.keys(recordsCache).length);
+}
+
+/* -------------------------------------------------------------
+   記録一覧画面の描画
+   ------------------------------------------------------------- */
+function renderRecordsList() {
+  const listEl = document.getElementById("recordsList");
+  const emptyEl = document.getElementById("recordsEmpty");
+  const ids = Object.keys(recordsCache); // すでにcreatedAt降順で取得済み
+
+  if (ids.length === 0) {
+    listEl.innerHTML = "";
+    emptyEl.style.display = "block";
+    return;
+  }
+  emptyEl.style.display = "none";
+
+  listEl.innerHTML = ids
+    .map((id) => {
+      const r = recordsCache[id];
+      const memoHtml = r.memo
+        ? '<div class="record-card-memo">' + escapeHtml(r.memo) + "</div>"
+        : "";
+      return (
+        '<button class="record-card" onclick="openRecordDetail(\'' + id + '\')">' +
+        '<img class="record-card-thumb" src="' + r.photoData + '" alt="">' +
+        '<div class="record-card-body">' +
+        '<div class="record-card-category">' + categoryLabel(r.category) + "</div>" +
+        '<div class="record-card-meta">' + escapeHtml(r.nickname || "ゲスト") + " ・ " + formatTimestamp(r.createdAt) + "</div>" +
+        memoHtml +
+        "</div>" +
+        "</button>"
+      );
+    })
+    .join("");
+}
+
+/* ユーザー入力(ニックネーム・メモ)をそのままHTMLに差し込むとXSSの危険があるため、
+   最低限のエスケープを行う。 */
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/* -------------------------------------------------------------
+   地図タブの初期化・ピン描画
+   ------------------------------------------------------------- */
+function initMainMapIfNeeded() {
+  if (mainMap) return; // 既に初期化済み
+  mainMap = L.map("mapContainer").setView(DEFAULT_MAP_CENTER, 12);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19,
+  }).addTo(mainMap);
+  mainMarkersLayer = L.layerGroup().addTo(mainMap);
+  renderMapMarkers(); // 初期化時点で既に取得済みの記録があれば反映
+}
+
+function renderMapMarkers() {
+  if (!mainMap || !mainMarkersLayer) return; // 地図タブをまだ一度も開いていない
+
+  mainMarkersLayer.clearLayers();
+  for (const key in mainMarkersById) delete mainMarkersById[key];
+
+  Object.keys(recordsCache).forEach((id) => {
+    const r = recordsCache[id];
+    if (typeof r.lat !== "number" || typeof r.lng !== "number") return;
+    const marker = L.marker([r.lat, r.lng]).addTo(mainMarkersLayer);
+    marker.bindPopup(
+      '<div style="width:140px;">' +
+      '<img src="' + r.photoData + '" style="width:100%;height:90px;object-fit:cover;border-radius:8px;" alt="">' +
+      '<div style="font-size:12px;font-weight:bold;margin-top:6px;">' + categoryLabel(r.category) + "</div>" +
+      '<div style="font-size:11px;color:#6E7570;">' + escapeHtml(r.nickname || "ゲスト") + "</div>" +
+      '<button style="margin-top:6px;font-size:11px;color:#0277BD;background:none;border:none;cursor:pointer;padding:0;" onclick="openRecordDetail(\'' + id + '\')">詳細を見る</button>' +
+      "</div>"
+    );
+    mainMarkersById[id] = marker;
+  });
+}
+
+/* -------------------------------------------------------------
+   記録追加モーダル
+   ------------------------------------------------------------- */
+function openAddRecordModal() {
+  // フォームの状態をリセット
+  selectedCategoryId = null;
+  selectedPhotoDataUrl = null;
+  document.getElementById("recordPhotoPreview").style.display = "none";
+  document.getElementById("recordPhotoPlaceholder").style.display = "block";
+  document.getElementById("recordMemo").value = "";
+  document.getElementById("recordFormStatus").textContent = "";
+  document.getElementById("recordFormStatus").classList.remove("error");
+  document.getElementById("recordLocationStatus").textContent = "";
+
+  // カテゴリのチップを描画
+  const chipsEl = document.getElementById("categoryChips");
+  chipsEl.innerHTML = CATEGORIES.map(
+    (c) => '<button type="button" class="chip" data-category="' + c.id + '" onclick="selectCategory(\'' + c.id + '\')">' + c.emoji + " " + c.label + "</button>"
+  ).join("");
+
+  document.getElementById("recordFormModal").classList.remove("hidden");
+
+  // モーダルを開いた直後はまだ画面上に幅0で存在するため、
+  // 少し遅らせてから地図を初期化してサイズを正しく計算させる
+  setTimeout(() => {
+    initFormMap(DEFAULT_MAP_CENTER);
+    useCurrentLocationForForm();
+  }, 50);
+}
+
+function closeAddRecordModal() {
+  if (isRecordSaving) {
+    alert("保存中です。少し待ってから閉じてください。");
+    return;
+  }
+  document.getElementById("recordFormModal").classList.add("hidden");
+}
+
+function selectCategory(id) {
+  selectedCategoryId = id;
+  document.querySelectorAll("#categoryChips .chip").forEach((chip) => {
+    chip.classList.toggle("selected", chip.dataset.category === id);
+  });
+}
+
+async function onRecordPhotoSelected(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = "";
+  if (!file) return;
+
+  if (!file.type.startsWith("image/")) {
+    setRecordFormStatus("画像ファイルを選んでください", true);
+    return;
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    setRecordFormStatus("ファイルサイズが大きすぎます（20MBまで）", true);
+    return;
+  }
+
+  try {
+    setRecordFormStatus("写真を処理中…", false);
+    const dataUrl = await compressImageToDataUrl(file, RECORD_PHOTO_COMPRESS_ATTEMPTS);
+    selectedPhotoDataUrl = dataUrl;
+    const previewEl = document.getElementById("recordPhotoPreview");
+    previewEl.src = dataUrl;
+    previewEl.style.display = "block";
+    document.getElementById("recordPhotoPlaceholder").style.display = "none";
+    setRecordFormStatus("", false);
+  } catch (e) {
+    setRecordFormStatus("写真の処理に失敗しました: " + e.message, true);
+  }
+}
+
+function setRecordFormStatus(message, isError) {
+  const el = document.getElementById("recordFormStatus");
+  el.textContent = message || "";
+  el.classList.toggle("error", !!isError);
+}
+
+/* -------------------------------------------------------------
+   位置情報（記録追加フォーム内のミニ地図）
+   ------------------------------------------------------------- */
+function initFormMap(center) {
+  if (formMap) {
+    formMap.remove();
+    formMap = null;
+  }
+  formMap = L.map("recordLocationMap").setView(center, 15);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19,
+  }).addTo(formMap);
+
+  formMarker = L.marker(center, { draggable: true }).addTo(formMap);
+
+  // 地図をタップした場所にピンを移動できるようにする
+  formMap.on("click", (e) => {
+    formMarker.setLatLng(e.latlng);
+  });
+}
+
+function useCurrentLocationForForm() {
+  const statusEl = document.getElementById("recordLocationStatus");
+  if (!("geolocation" in navigator)) {
+    statusEl.textContent = "この端末では位置情報が使えません。地図をタップして場所を指定してください。";
+    return;
+  }
+  statusEl.textContent = "現在地を取得中…";
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const center = [position.coords.latitude, position.coords.longitude];
+      if (formMap && formMarker) {
+        formMap.setView(center, 16);
+        formMarker.setLatLng(center);
+      }
+      statusEl.textContent = "現在地を取得しました。違う場所であれば地図をタップして動かせます。";
+    },
+    () => {
+      statusEl.textContent = "現在地を取得できませんでした。地図をタップして場所を指定してください。";
+    },
+    { enableHighAccuracy: true, timeout: 8000 }
+  );
+}
+
+/* -------------------------------------------------------------
+   記録の保存
+   ------------------------------------------------------------- */
+async function saveRecord() {
+  if (!selectedPhotoDataUrl) {
+    setRecordFormStatus("写真を選んでください", true);
+    return;
+  }
+  if (!selectedCategoryId) {
+    setRecordFormStatus("ゴミの種類を選んでください", true);
+    return;
+  }
+  if (!formMarker) {
+    setRecordFormStatus("場所を指定してください", true);
+    return;
+  }
+
+  const latlng = formMarker.getLatLng();
+
+  isRecordSaving = true;
+  setRecordFormStatus("保存中…", false);
+  try {
+    const uid = auth.currentUser.uid;
+    const docData = {
+      uid: uid,
+      nickname: (currentProfile && currentProfile.nickname) || DEFAULT_NICKNAME,
+      category: selectedCategoryId,
+      photoData: selectedPhotoDataUrl,
+      lat: latlng.lat,
+      lng: latlng.lng,
+      memo: document.getElementById("recordMemo").value.trim(),
+      createdAt: firebase.firestore.Timestamp.now(),
+    };
+    await db.collection(RECORDS_COLLECTION).add(docData);
+    // onSnapshotが自動発火して一覧・地図・件数を更新してくれる
+    document.getElementById("recordFormModal").classList.add("hidden");
+  } catch (e) {
+    if (e.code === "permission-denied") {
+      setRecordFormStatus("保存の権限がありません。Firestoreのルール設定をご確認ください。", true);
+    } else {
+      setRecordFormStatus("保存に失敗しました: " + e.message, true);
+    }
+  } finally {
+    isRecordSaving = false;
+  }
+}
+
+/* -------------------------------------------------------------
+   記録詳細モーダル
+   ------------------------------------------------------------- */
+function openRecordDetail(id) {
+  const r = recordsCache[id];
+  if (!r) return;
+  currentDetailRecordId = id;
+
+  document.getElementById("detailPhoto").src = r.photoData;
+  document.getElementById("detailCategory").textContent = categoryLabel(r.category);
+  document.getElementById("detailNickname").textContent = r.nickname || "ゲスト";
+  document.getElementById("detailCreatedAt").textContent = formatTimestamp(r.createdAt);
+
+  const memoRow = document.getElementById("detailMemoRow");
+  if (r.memo) {
+    memoRow.style.display = "block";
+    document.getElementById("detailMemo").textContent = r.memo;
+  } else {
+    memoRow.style.display = "none";
+  }
+
+  document.getElementById("recordDetailModal").classList.remove("hidden");
+}
+
+function closeRecordDetail() {
+  document.getElementById("recordDetailModal").classList.add("hidden");
+  currentDetailRecordId = null;
+}
+
+/* 詳細モーダルから「地図で見る」を押したときの処理 */
+function viewCurrentDetailOnMap() {
+  if (!currentDetailRecordId) return;
+  const id = currentDetailRecordId;
+  closeRecordDetail();
+  switchScreen("map");
+
+  // 地図タブに切り替わった直後はサイズ計算前のことがあるため、
+  // 少し遅らせてからピンの位置へ移動してポップアップを開く
+  setTimeout(() => {
+    const r = recordsCache[id];
+    const marker = mainMarkersById[id];
+    if (mainMap && r) {
+      mainMap.setView([r.lat, r.lng], 16);
+    }
+    if (marker) marker.openPopup();
+  }, 100);
+}
+
+/* =============================================================
+   7. 画面(タブ)切り替え
+   ============================================================= */
+function switchScreen(name) {
+  document.querySelectorAll(".screen").forEach((el) => el.classList.remove("active"));
+  document.getElementById("screen-" + name).classList.add("active");
+
+  document.querySelectorAll(".nav-btn").forEach((btn) => btn.classList.remove("active"));
+  document.querySelector('.nav-btn[data-screen="' + name + '"]').classList.add("active");
+
+  // 地図タブを開いたときだけ地図を初期化・サイズ再計算する
+  // （非表示のdivにLeafletの地図を作ると幅・高さが0で描画が崩れるため）
+  if (name === "map") {
+    initMainMapIfNeeded();
+    setTimeout(() => { if (mainMap) mainMap.invalidateSize(); }, 50);
+  }
+}
+
+/* =============================================================
+   8. PWA用のService Worker登録
+   file://で開いた場合は登録できないため、その場合は静かにスキップする
+   （httpsで公開(Vercel等)した後は自動的に有効になる）
+   ============================================================= */
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {
+      // 失敗してもアプリ自体は問題なく動くので何もしない
+    });
+  });
+}
+</script>
+
+</body>
+</html>
