@@ -35,6 +35,23 @@
   }
   html.auth-checking #app{ visibility:hidden; }
 
+  #boot-error{
+    display:none;
+    position:fixed;
+    top:14px; left:14px; right:14px;
+    max-width:432px;
+    margin:0 auto;
+    background:#FDECEA;
+    border:1px solid #F3B8B0;
+    color:#8A2E22;
+    border-radius:12px;
+    padding:12px 14px;
+    font-size:12.5px;
+    line-height:1.7;
+    z-index:999;
+  }
+  #boot-error.visible{ display:block; }
+
   #app{
     width:100%;
     max-width:460px;
@@ -213,6 +230,13 @@
 </head>
 <body>
 
+<div id="boot-error">
+  ページの読み込みに問題が発生しました。<br>
+  ・Firebaseの設定（assets/firebase-init.js の firebaseConfig）が正しいか<br>
+  ・このページを http(s):// 経由で開いているか（file:// で直接開くと動作しません）<br>
+  をご確認ください。詳細はブラウザの開発者ツール（コンソール）にも表示されています。
+</div>
+
 <div id="app">
   <header class="top-header">
     <div class="logo-group">
@@ -286,30 +310,50 @@
     window.location.href = "login.html";
   });
 
-  // 未ログインならログイン画面へ即リダイレクト
-  auth.onAuthStateChanged(async (user) => {
-    if (!user){
-      window.location.href = "login.html";
-      return;
-    }
-    try{
-      const data = await fetchUserProfile(user.uid);
-      const name = data.displayName || (user.isAnonymous ? "ゲスト" : "伊勢の探検家");
+  function showBootError(){
+    document.getElementById("boot-error").classList.add("visible");
+    document.documentElement.classList.remove("auth-checking");
+  }
 
-      $("header-username").textContent = name;
-      const avatar = $("header-avatar");
-      if (data.photoURL){
-        avatar.innerHTML = '<img src="' + data.photoURL + '" alt="">';
-      } else {
-        avatar.textContent = name.charAt(name.length - 1) || "見";
+  // Firebaseの読み込み・通信に失敗しても画面が白紙のまま止まらないよう、
+  // 一定時間内に認証状態が確定しない場合はエラーを表示する
+  const bootTimeout = setTimeout(showBootError, 6000);
+
+  try{
+    // 未ログインならログイン画面へ即リダイレクト
+    auth.onAuthStateChanged(async (user) => {
+      clearTimeout(bootTimeout);
+      if (!user){
+        window.location.href = "login.html";
+        return;
       }
+      try{
+        const data = await fetchUserProfile(user.uid);
+        const name = data.displayName || (user.isAnonymous ? "ゲスト" : "伊勢の探検家");
 
-      document.documentElement.classList.remove("auth-checking");
-    }catch(err){
+        $("header-username").textContent = name;
+        const avatar = $("header-avatar");
+        if (data.photoURL){
+          avatar.innerHTML = '<img src="' + data.photoURL + '" alt="">';
+        } else {
+          avatar.textContent = name.charAt(name.length - 1) || "見";
+        }
+
+        document.documentElement.classList.remove("auth-checking");
+      }catch(err){
+        console.error(err);
+        document.documentElement.classList.remove("auth-checking");
+      }
+    }, (err) => {
+      clearTimeout(bootTimeout);
       console.error(err);
-      document.documentElement.classList.remove("auth-checking");
-    }
-  });
+      showBootError();
+    });
+  }catch(err){
+    clearTimeout(bootTimeout);
+    console.error(err);
+    showBootError();
+  }
 </script>
 </body>
 </html>
