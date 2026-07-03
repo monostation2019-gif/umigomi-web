@@ -342,7 +342,176 @@
     display: none;
     white-space: pre-line;
   }
+
+  /* ---------- 地図画面 ---------- */
+  /* mainの左右上下パディングを打ち消して画面いっぱいに地図を表示する */
+  .map-container {
+    height: calc(100vh - var(--header-height) - var(--nav-height) - 48px);
+    min-height: 320px;
+    margin: -24px -16px;
+    background: var(--color-outline); /* 読み込み中に見える背景色 */
+  }
+
+  /* ---------- 右下の「＋」ボタン（記録追加） ---------- */
+  .fab {
+    position: fixed;
+    right: 20px;
+    bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + 16px);
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--color-indigo);
+    color: #fff;
+    font-size: 26px;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+    z-index: 20;
+  }
+  .fab:active { opacity: 0.85; }
+
+  /* ---------- 記録一覧画面 ---------- */
+  .records-list { display: flex; flex-direction: column; gap: 12px; }
+  .record-card {
+    display: flex;
+    gap: 12px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-outline);
+    border-radius: 16px;
+    padding: 10px;
+    cursor: pointer;
+    text-align: left;
+  }
+  .record-card-thumb {
+    width: 64px;
+    height: 64px;
+    border-radius: 12px;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: var(--color-bg);
+  }
+  .record-card-body { min-width: 0; }
+  .record-card-category { font-size: 13px; font-weight: bold; }
+  .record-card-meta { font-size: 12px; color: var(--color-text-sub); margin-top: 2px; }
+  .record-card-memo {
+    font-size: 12px;
+    color: var(--color-text-sub);
+    margin-top: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ---------- モーダル共通（記録追加・記録詳細） ---------- */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 80;
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal-box {
+    background: var(--color-surface);
+    width: 100%;
+    max-width: 480px;
+    max-height: 88vh;
+    border-radius: 20px 20px 0 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 16px 8px;
+    border-bottom: 1px solid var(--color-outline);
+  }
+  .modal-header h2 { font-size: 16px; margin: 0; }
+  .modal-close { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--color-text-sub); }
+  .modal-body { padding: 16px; overflow-y: auto; }
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--color-outline);
+  }
+
+  /* ---------- 記録追加フォームの部品 ---------- */
+  .field-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: bold;
+    margin: 16px 0 8px;
+  }
+  .field-label:first-child { margin-top: 0; }
+  .field-hint { font-size: 11px; color: var(--color-text-sub); margin: -4px 0 8px; }
+  .required, .optional {
+    font-size: 10px;
+    font-weight: normal;
+    border-radius: 10px;
+    padding: 1px 8px;
+  }
+  .required { color: #B00020; background: #FDECEA; }
+  .optional { color: var(--color-text-sub); background: var(--color-bg); }
+  .btn-text.small { font-size: 12px; padding: 4px; margin-left: auto; }
+
+  .record-photo-picker {
+    height: 160px;
+    border: 2px dashed var(--color-outline);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-sub);
+    font-size: 13px;
+    cursor: pointer;
+    overflow: hidden;
+  }
+  .record-photo-picker img { width: 100%; height: 100%; object-fit: cover; }
+
+  .category-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    border: 1px solid var(--color-outline);
+    background: var(--color-surface);
+    border-radius: 20px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .chip.selected {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+    font-weight: bold;
+  }
+
+  .mini-map {
+    height: 180px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--color-outline);
+  }
+
+  .detail-photo {
+    width: 100%;
+    max-height: 240px;
+    object-fit: cover;
+    border-radius: 12px;
+    margin-bottom: 16px;
+    background: var(--color-bg);
+  }
 </style>
+  <!-- 地図表示用ライブラリ(Leaflet.js)のスタイル -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 <body>
 
@@ -375,6 +544,87 @@
     </button>
 
     <div id="loginError"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     記録追加モーダル（地図・記録一覧の「＋」から開く）
+     ============================================================ -->
+<div id="recordFormModal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>ゴミを記録する</h2>
+      <button class="modal-close" onclick="closeAddRecordModal()">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <!-- 写真（必須） -->
+      <label class="field-label">写真<span class="required">必須</span></label>
+      <div class="record-photo-picker" id="recordPhotoPicker" onclick="document.getElementById('recordPhotoInput').click();">
+        <span id="recordPhotoPlaceholder">📷 タップして撮影・写真を選択</span>
+        <img id="recordPhotoPreview" style="display:none;" alt="選択した写真のプレビュー">
+      </div>
+      <input type="file" id="recordPhotoInput" accept="image/*" capture="environment" style="display:none" onchange="onRecordPhotoSelected(event)">
+
+      <!-- カテゴリ（必須） -->
+      <label class="field-label">ゴミの種類<span class="required">必須</span></label>
+      <div class="category-chips" id="categoryChips"></div>
+
+      <!-- 位置情報（必須） -->
+      <label class="field-label">
+        場所<span class="required">必須</span>
+        <button class="btn-text small" onclick="useCurrentLocationForForm()">📍 現在地を取得しなおす</button>
+      </label>
+      <p class="field-hint">ピンが違う場所を指していたら、地図をタップして動かせます。</p>
+      <div id="recordLocationMap" class="mini-map"></div>
+      <div id="recordLocationStatus" class="avatar-status"></div>
+
+      <!-- ひとことメモ（任意） -->
+      <label class="field-label">ひとことメモ<span class="optional">任意</span></label>
+      <textarea id="recordMemo" rows="2" maxlength="100" placeholder="気づいたことがあれば"></textarea>
+
+      <div id="recordFormStatus" class="avatar-status"></div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-text" onclick="closeAddRecordModal()">キャンセル</button>
+      <button class="btn" onclick="saveRecord()">記録する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     記録詳細モーダル（一覧のカード・地図のピンをタップすると開く）
+     ============================================================ -->
+<div id="recordDetailModal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>記録の詳細</h2>
+      <button class="modal-close" onclick="closeRecordDetail()">✕</button>
+    </div>
+    <div class="modal-body">
+      <img id="detailPhoto" class="detail-photo" alt="記録された写真">
+      <div class="info-row">
+        <div class="label">ゴミの種類</div>
+        <div class="value" id="detailCategory">-</div>
+      </div>
+      <div class="info-row">
+        <div class="label">記録した人</div>
+        <div class="value" id="detailNickname">-</div>
+      </div>
+      <div class="info-row">
+        <div class="label">記録日時</div>
+        <div class="value" id="detailCreatedAt">-</div>
+      </div>
+      <div class="info-row" id="detailMemoRow">
+        <div class="label">ひとことメモ</div>
+        <div class="value" id="detailMemo">-</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-text" onclick="closeRecordDetail()">閉じる</button>
+      <button class="btn" onclick="viewCurrentDetailOnMap()">地図で見る</button>
+    </div>
   </div>
 </div>
 
@@ -427,20 +677,20 @@
     </div>
   </section>
 
-  <!-- 地図（プレースホルダー） -->
+  <!-- 地図: みんなが記録したゴミをピンで表示 -->
   <section class="screen" id="screen-map">
-    <div class="placeholder">
-      <div class="icon">🗺️</div>
-      <p>地図機能は今後実装予定です</p>
-    </div>
+    <div id="mapContainer" class="map-container"></div>
+    <button class="fab" onclick="openAddRecordModal()">＋</button>
   </section>
 
-  <!-- 記録一覧（プレースホルダー） -->
+  <!-- 記録一覧: みんなの記録を新しい順に一覧表示 -->
   <section class="screen" id="screen-records">
-    <div class="placeholder">
+    <div id="recordsList" class="records-list"></div>
+    <div id="recordsEmpty" class="placeholder" style="display:none;">
       <div class="icon">📋</div>
-      <p>記録一覧機能は今後実装予定です</p>
+      <p>まだ記録がありません。<br>右下の「＋」から最初の記録を投稿してみましょう。</p>
     </div>
+    <button class="fab" onclick="openAddRecordModal()">＋</button>
   </section>
 
   <!-- プロフィール -->
@@ -529,6 +779,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" onerror="window.__sdkLoadFailed=true;"></script>
 
+<!-- 地図表示用ライブラリ(Leaflet.js)本体 -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" onerror="window.__sdkLoadFailed=true;"></script>
+
 <script>
 /* =============================================================
    起動時の安全装置:
@@ -604,18 +857,42 @@ const DEFAULT_NICKNAME = "ゲスト";
 const DEFAULT_COMMENT = "";
 const DEFAULT_ICON = "icons/default_avatar.png";
 
+const RECORDS_COLLECTION = "records";
+
+/* ゴミの分類。あとから種類を増やす場合はこの配列に追加するだけでよい
+   （記録フォームのチップ・一覧表示のどちらにも自動で反映される）。 */
+const CATEGORIES = [
+  { id: "plastic", label: "プラスチック類", emoji: "🥤" },
+  { id: "foam", label: "発泡スチロール", emoji: "📦" },
+  { id: "can_bottle", label: "缶・ビン", emoji: "🥫" },
+  { id: "fishing_gear", label: "漁具・ロープ類", emoji: "🎣" },
+  { id: "driftwood", label: "流木・自然物", emoji: "🪵" },
+  { id: "other", label: "その他", emoji: "🗑️" },
+];
+function categoryLabel(id) {
+  const found = CATEGORIES.find((c) => c.id === id);
+  return found ? found.emoji + " " + found.label : id;
+}
+
+/* 伊勢志摩付近をデフォルトの地図中心地点にする */
+const DEFAULT_MAP_CENTER = [34.4700, 136.8300];
+
 /* 現在のプロフィールをメモリ上にも保持しておく（編集フォームの初期値等に使う） */
 let currentProfile = null;
 
-/* アバター画像のアップロードが進行中かどうか。
+/* アバター画像のアップロード中・記録の保存中かどうか。
    trueの間にログアウト・タブを閉じる等が起きると保存が失敗するため、
    この変数を見てそれらの操作を止める。 */
 let isAvatarUploading = false;
+let isRecordSaving = false;
+function isAnySaveInProgress() {
+  return isAvatarUploading || isRecordSaving;
+}
 
-/* アップロード中にタブを閉じたり再読み込みされたりすると保存が途中で
+/* 保存中にタブを閉じたり再読み込みされたりすると保存が途中で
    打ち切られてしまうため、ブラウザ標準の確認ダイアログで警告する。 */
 window.addEventListener("beforeunload", (event) => {
-  if (isAvatarUploading) {
+  if (isAnySaveInProgress()) {
     event.preventDefault();
     event.returnValue = "";
   }
@@ -639,6 +916,7 @@ auth.onAuthStateChanged(async (user) => {
     // ログイン済み
     try {
       await loadOrCreateProfile(user);
+      subscribeToRecords();
       hideSplash();
       hideLoginScreen();
     } catch (e) {
@@ -732,8 +1010,8 @@ async function loginAsGuest() {
 
 /* ログアウト */
 async function logout() {
-  if (isAvatarUploading) {
-    alert("画像を保存中です。完了してからログアウトしてください（あと数秒お待ちください）。");
+  if (isAnySaveInProgress()) {
+    alert("保存処理が完了していません。完了してからログアウトしてください（あと数秒お待ちください）。");
     return;
   }
   await auth.signOut();
@@ -836,7 +1114,7 @@ async function onAvatarFileSelected(event) {
 
     // 画像を小さく圧縮し、Firestoreの1ドキュメント上限(1MB)に収まる
     // データURL(文字列)に変換する。大きすぎる場合は段階的に縮小して再試行する。
-    const dataUrl = await compressImageToDataUrl(file);
+    const dataUrl = await compressImageToDataUrl(file, AVATAR_COMPRESS_ATTEMPTS);
 
     // 画面にすぐ反映する
     imgEl.src = dataUrl;
@@ -911,20 +1189,26 @@ function loadResizedCanvas(file, maxSize) {
    ============================================================= */
 const MAX_DATA_URL_LENGTH = 700 * 1024; // 約700KB分の文字数
 
-async function compressImageToDataUrl(file) {
-  // [辺の最大サイズ, JPEG品質] の組み合わせを、大きい順→小さい順に試す
-  const attempts = [
-    [400, 0.85],
-    [400, 0.6],
-    [280, 0.6],
-    [200, 0.5],
-  ];
+/* アバター用の縮小設定（正方形に近い小さいアイコンなので控えめなサイズでよい） */
+const AVATAR_COMPRESS_ATTEMPTS = [
+  [400, 0.85],
+  [400, 0.6],
+  [280, 0.6],
+  [200, 0.5],
+];
+/* 記録写真用の縮小設定（現場の様子が分かるよう少し大きめに） */
+const RECORD_PHOTO_COMPRESS_ATTEMPTS = [
+  [640, 0.8],
+  [640, 0.6],
+  [480, 0.6],
+  [320, 0.5],
+];
 
-  let lastDataUrl = null;
+async function compressImageToDataUrl(file, attempts) {
+  // [辺の最大サイズ, JPEG品質] の組み合わせを、大きい順→小さい順に試す
   for (const [maxSize, quality] of attempts) {
     const canvas = await loadResizedCanvas(file, maxSize);
     const dataUrl = canvas.toDataURL("image/jpeg", quality);
-    lastDataUrl = dataUrl;
     if (dataUrl.length <= MAX_DATA_URL_LENGTH) {
       return dataUrl;
     }
@@ -966,7 +1250,352 @@ async function saveProfile() {
 }
 
 /* =============================================================
-   6. 画面(タブ)切り替え
+   6. 記録機能（地図・記録一覧・記録の追加・詳細表示）
+   ============================================================= */
+
+/* 取得済みの記録をキャッシュしておく（一覧描画・詳細表示・地図ピンで共有） */
+let recordsCache = {}; // { docId: recordData }
+let currentDetailRecordId = null;
+
+let mainMap = null;           // 地図タブのLeafletマップ本体
+let mainMarkersLayer = null;  // 地図タブ上のピンをまとめて管理するレイヤー
+const mainMarkersById = {};   // { docId: L.Marker }
+
+let formMap = null;           // 記録追加モーダル内のミニ地図
+let formMarker = null;        // ミニ地図上の位置指定マーカー
+
+let selectedCategoryId = null;
+let selectedPhotoDataUrl = null;
+
+/* -------------------------------------------------------------
+   Firestoreの records コレクションをリアルタイム監視する。
+   ログイン成功後に一度だけ呼び出す。以後は新しい記録が追加されるたび
+   自動的に地図・一覧・ホームの件数表示が更新される。
+   ------------------------------------------------------------- */
+function subscribeToRecords() {
+  db.collection(RECORDS_COLLECTION)
+    .orderBy("createdAt", "desc")
+    .onSnapshot(
+      (snapshot) => {
+        recordsCache = {};
+        snapshot.forEach((doc) => {
+          recordsCache[doc.id] = doc.data();
+        });
+        renderRecordsList();
+        renderMapMarkers();
+        updateHomeRecordCount();
+      },
+      (error) => {
+        console.warn("記録の取得に失敗しました:", error);
+      }
+    );
+}
+
+function updateHomeRecordCount() {
+  const el = document.getElementById("statRecordCount");
+  if (el) el.textContent = String(Object.keys(recordsCache).length);
+}
+
+/* -------------------------------------------------------------
+   記録一覧画面の描画
+   ------------------------------------------------------------- */
+function renderRecordsList() {
+  const listEl = document.getElementById("recordsList");
+  const emptyEl = document.getElementById("recordsEmpty");
+  const ids = Object.keys(recordsCache); // すでにcreatedAt降順で取得済み
+
+  if (ids.length === 0) {
+    listEl.innerHTML = "";
+    emptyEl.style.display = "block";
+    return;
+  }
+  emptyEl.style.display = "none";
+
+  listEl.innerHTML = ids
+    .map((id) => {
+      const r = recordsCache[id];
+      const memoHtml = r.memo
+        ? '<div class="record-card-memo">' + escapeHtml(r.memo) + "</div>"
+        : "";
+      return (
+        '<button class="record-card" onclick="openRecordDetail(\'' + id + '\')">' +
+        '<img class="record-card-thumb" src="' + r.photoData + '" alt="">' +
+        '<div class="record-card-body">' +
+        '<div class="record-card-category">' + categoryLabel(r.category) + "</div>" +
+        '<div class="record-card-meta">' + escapeHtml(r.nickname || "ゲスト") + " ・ " + formatTimestamp(r.createdAt) + "</div>" +
+        memoHtml +
+        "</div>" +
+        "</button>"
+      );
+    })
+    .join("");
+}
+
+/* ユーザー入力(ニックネーム・メモ)をそのままHTMLに差し込むとXSSの危険があるため、
+   最低限のエスケープを行う。 */
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/* -------------------------------------------------------------
+   地図タブの初期化・ピン描画
+   ------------------------------------------------------------- */
+function initMainMapIfNeeded() {
+  if (mainMap) return; // 既に初期化済み
+  mainMap = L.map("mapContainer").setView(DEFAULT_MAP_CENTER, 12);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19,
+  }).addTo(mainMap);
+  mainMarkersLayer = L.layerGroup().addTo(mainMap);
+  renderMapMarkers(); // 初期化時点で既に取得済みの記録があれば反映
+}
+
+function renderMapMarkers() {
+  if (!mainMap || !mainMarkersLayer) return; // 地図タブをまだ一度も開いていない
+
+  mainMarkersLayer.clearLayers();
+  for (const key in mainMarkersById) delete mainMarkersById[key];
+
+  Object.keys(recordsCache).forEach((id) => {
+    const r = recordsCache[id];
+    if (typeof r.lat !== "number" || typeof r.lng !== "number") return;
+    const marker = L.marker([r.lat, r.lng]).addTo(mainMarkersLayer);
+    marker.bindPopup(
+      '<div style="width:140px;">' +
+      '<img src="' + r.photoData + '" style="width:100%;height:90px;object-fit:cover;border-radius:8px;" alt="">' +
+      '<div style="font-size:12px;font-weight:bold;margin-top:6px;">' + categoryLabel(r.category) + "</div>" +
+      '<div style="font-size:11px;color:#6E7570;">' + escapeHtml(r.nickname || "ゲスト") + "</div>" +
+      '<button style="margin-top:6px;font-size:11px;color:#0277BD;background:none;border:none;cursor:pointer;padding:0;" onclick="openRecordDetail(\'' + id + '\')">詳細を見る</button>' +
+      "</div>"
+    );
+    mainMarkersById[id] = marker;
+  });
+}
+
+/* -------------------------------------------------------------
+   記録追加モーダル
+   ------------------------------------------------------------- */
+function openAddRecordModal() {
+  // フォームの状態をリセット
+  selectedCategoryId = null;
+  selectedPhotoDataUrl = null;
+  document.getElementById("recordPhotoPreview").style.display = "none";
+  document.getElementById("recordPhotoPlaceholder").style.display = "block";
+  document.getElementById("recordMemo").value = "";
+  document.getElementById("recordFormStatus").textContent = "";
+  document.getElementById("recordFormStatus").classList.remove("error");
+  document.getElementById("recordLocationStatus").textContent = "";
+
+  // カテゴリのチップを描画
+  const chipsEl = document.getElementById("categoryChips");
+  chipsEl.innerHTML = CATEGORIES.map(
+    (c) => '<button type="button" class="chip" data-category="' + c.id + '" onclick="selectCategory(\'' + c.id + '\')">' + c.emoji + " " + c.label + "</button>"
+  ).join("");
+
+  document.getElementById("recordFormModal").classList.remove("hidden");
+
+  // モーダルを開いた直後はまだ画面上に幅0で存在するため、
+  // 少し遅らせてから地図を初期化してサイズを正しく計算させる
+  setTimeout(() => {
+    initFormMap(DEFAULT_MAP_CENTER);
+    useCurrentLocationForForm();
+  }, 50);
+}
+
+function closeAddRecordModal() {
+  if (isRecordSaving) {
+    alert("保存中です。少し待ってから閉じてください。");
+    return;
+  }
+  document.getElementById("recordFormModal").classList.add("hidden");
+}
+
+function selectCategory(id) {
+  selectedCategoryId = id;
+  document.querySelectorAll("#categoryChips .chip").forEach((chip) => {
+    chip.classList.toggle("selected", chip.dataset.category === id);
+  });
+}
+
+async function onRecordPhotoSelected(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = "";
+  if (!file) return;
+
+  if (!file.type.startsWith("image/")) {
+    setRecordFormStatus("画像ファイルを選んでください", true);
+    return;
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    setRecordFormStatus("ファイルサイズが大きすぎます（20MBまで）", true);
+    return;
+  }
+
+  try {
+    setRecordFormStatus("写真を処理中…", false);
+    const dataUrl = await compressImageToDataUrl(file, RECORD_PHOTO_COMPRESS_ATTEMPTS);
+    selectedPhotoDataUrl = dataUrl;
+    const previewEl = document.getElementById("recordPhotoPreview");
+    previewEl.src = dataUrl;
+    previewEl.style.display = "block";
+    document.getElementById("recordPhotoPlaceholder").style.display = "none";
+    setRecordFormStatus("", false);
+  } catch (e) {
+    setRecordFormStatus("写真の処理に失敗しました: " + e.message, true);
+  }
+}
+
+function setRecordFormStatus(message, isError) {
+  const el = document.getElementById("recordFormStatus");
+  el.textContent = message || "";
+  el.classList.toggle("error", !!isError);
+}
+
+/* -------------------------------------------------------------
+   位置情報（記録追加フォーム内のミニ地図）
+   ------------------------------------------------------------- */
+function initFormMap(center) {
+  if (formMap) {
+    formMap.remove();
+    formMap = null;
+  }
+  formMap = L.map("recordLocationMap").setView(center, 15);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19,
+  }).addTo(formMap);
+
+  formMarker = L.marker(center, { draggable: true }).addTo(formMap);
+
+  // 地図をタップした場所にピンを移動できるようにする
+  formMap.on("click", (e) => {
+    formMarker.setLatLng(e.latlng);
+  });
+}
+
+function useCurrentLocationForForm() {
+  const statusEl = document.getElementById("recordLocationStatus");
+  if (!("geolocation" in navigator)) {
+    statusEl.textContent = "この端末では位置情報が使えません。地図をタップして場所を指定してください。";
+    return;
+  }
+  statusEl.textContent = "現在地を取得中…";
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const center = [position.coords.latitude, position.coords.longitude];
+      if (formMap && formMarker) {
+        formMap.setView(center, 16);
+        formMarker.setLatLng(center);
+      }
+      statusEl.textContent = "現在地を取得しました。違う場所であれば地図をタップして動かせます。";
+    },
+    () => {
+      statusEl.textContent = "現在地を取得できませんでした。地図をタップして場所を指定してください。";
+    },
+    { enableHighAccuracy: true, timeout: 8000 }
+  );
+}
+
+/* -------------------------------------------------------------
+   記録の保存
+   ------------------------------------------------------------- */
+async function saveRecord() {
+  if (!selectedPhotoDataUrl) {
+    setRecordFormStatus("写真を選んでください", true);
+    return;
+  }
+  if (!selectedCategoryId) {
+    setRecordFormStatus("ゴミの種類を選んでください", true);
+    return;
+  }
+  if (!formMarker) {
+    setRecordFormStatus("場所を指定してください", true);
+    return;
+  }
+
+  const latlng = formMarker.getLatLng();
+
+  isRecordSaving = true;
+  setRecordFormStatus("保存中…", false);
+  try {
+    const uid = auth.currentUser.uid;
+    const docData = {
+      uid: uid,
+      nickname: (currentProfile && currentProfile.nickname) || DEFAULT_NICKNAME,
+      category: selectedCategoryId,
+      photoData: selectedPhotoDataUrl,
+      lat: latlng.lat,
+      lng: latlng.lng,
+      memo: document.getElementById("recordMemo").value.trim(),
+      createdAt: firebase.firestore.Timestamp.now(),
+    };
+    await db.collection(RECORDS_COLLECTION).add(docData);
+    // onSnapshotが自動発火して一覧・地図・件数を更新してくれる
+    document.getElementById("recordFormModal").classList.add("hidden");
+  } catch (e) {
+    if (e.code === "permission-denied") {
+      setRecordFormStatus("保存の権限がありません。Firestoreのルール設定をご確認ください。", true);
+    } else {
+      setRecordFormStatus("保存に失敗しました: " + e.message, true);
+    }
+  } finally {
+    isRecordSaving = false;
+  }
+}
+
+/* -------------------------------------------------------------
+   記録詳細モーダル
+   ------------------------------------------------------------- */
+function openRecordDetail(id) {
+  const r = recordsCache[id];
+  if (!r) return;
+  currentDetailRecordId = id;
+
+  document.getElementById("detailPhoto").src = r.photoData;
+  document.getElementById("detailCategory").textContent = categoryLabel(r.category);
+  document.getElementById("detailNickname").textContent = r.nickname || "ゲスト";
+  document.getElementById("detailCreatedAt").textContent = formatTimestamp(r.createdAt);
+
+  const memoRow = document.getElementById("detailMemoRow");
+  if (r.memo) {
+    memoRow.style.display = "block";
+    document.getElementById("detailMemo").textContent = r.memo;
+  } else {
+    memoRow.style.display = "none";
+  }
+
+  document.getElementById("recordDetailModal").classList.remove("hidden");
+}
+
+function closeRecordDetail() {
+  document.getElementById("recordDetailModal").classList.add("hidden");
+  currentDetailRecordId = null;
+}
+
+/* 詳細モーダルから「地図で見る」を押したときの処理 */
+function viewCurrentDetailOnMap() {
+  if (!currentDetailRecordId) return;
+  const id = currentDetailRecordId;
+  closeRecordDetail();
+  switchScreen("map");
+
+  // 地図タブに切り替わった直後はサイズ計算前のことがあるため、
+  // 少し遅らせてからピンの位置へ移動してポップアップを開く
+  setTimeout(() => {
+    const r = recordsCache[id];
+    const marker = mainMarkersById[id];
+    if (mainMap && r) {
+      mainMap.setView([r.lat, r.lng], 16);
+    }
+    if (marker) marker.openPopup();
+  }, 100);
+}
+
+/* =============================================================
+   7. 画面(タブ)切り替え
    ============================================================= */
 function switchScreen(name) {
   document.querySelectorAll(".screen").forEach((el) => el.classList.remove("active"));
@@ -974,10 +1603,17 @@ function switchScreen(name) {
 
   document.querySelectorAll(".nav-btn").forEach((btn) => btn.classList.remove("active"));
   document.querySelector('.nav-btn[data-screen="' + name + '"]').classList.add("active");
+
+  // 地図タブを開いたときだけ地図を初期化・サイズ再計算する
+  // （非表示のdivにLeafletの地図を作ると幅・高さが0で描画が崩れるため）
+  if (name === "map") {
+    initMainMapIfNeeded();
+    setTimeout(() => { if (mainMap) mainMap.invalidateSize(); }, 50);
+  }
 }
 
 /* =============================================================
-   7. PWA用のService Worker登録
+   8. PWA用のService Worker登録
    file://で開いた場合は登録できないため、その場合は静かにスキップする
    （httpsで公開(Vercel等)した後は自動的に有効になる）
    ============================================================= */
