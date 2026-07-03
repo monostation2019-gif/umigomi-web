@@ -798,6 +798,7 @@ async function onAvatarFileSelected(event) {
 
   const imgEl = document.getElementById("profileAvatarImg");
   const previousSrc = imgEl.src; // アップロード失敗時に元へ戻すために保持
+  const previousIconUrl = currentProfile ? currentProfile.iconUrl : DEFAULT_ICON;
 
   try {
     setAvatarStatus("画像を処理中…", false);
@@ -809,6 +810,13 @@ async function onAvatarFileSelected(event) {
     const previewDataUrl = canvas.toDataURL("image/jpeg", 0.85);
     imgEl.src = previewDataUrl;
     setAvatarStatus("アップロード中…", false);
+
+    // ★バグ修正ポイント:
+    // ここで currentProfile.iconUrl もプレビュー画像に更新しておく。
+    // こうしておかないと、アップロード完了前に「プロフィールを保存する」等の
+    // 別の操作でrenderProfile()が呼ばれた際、まだ古いiconUrlのまま
+    // 画面が再描画され、画像が一瞬で元に戻ってしまう不具合が起きる。
+    currentProfile = { ...currentProfile, iconUrl: previewDataUrl };
 
     const blob = await canvasToBlob(canvas, 0.85);
     const uid = auth.currentUser.uid;
@@ -830,6 +838,7 @@ async function onAvatarFileSelected(event) {
     setTimeout(() => setAvatarStatus("", false), 2500);
   } catch (e) {
     imgEl.src = previousSrc; // 失敗時はプレビューを元に戻す
+    currentProfile = { ...currentProfile, iconUrl: previousIconUrl }; // 裏側のデータも元に戻す
     if (e.code === "storage/unauthorized") {
       setAvatarStatus("アップロード権限がありません。Firebaseコンソール→Storage→Rulesの設定をご確認ください。", true);
     } else if (e.code === "storage/unknown" || /CORS/i.test(e.message || "")) {
