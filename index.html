@@ -345,14 +345,78 @@
 
   /* ---------- 地図画面 ---------- */
   /* mainの左右上下パディングを打ち消して画面いっぱいに地図を表示する */
-  .map-container {
-    height: calc(100vh - var(--header-height) - var(--nav-height) - 48px);
-    min-height: 320px;
+  .map-wrap {
+    position: relative;
     margin: -24px -16px;
+    /* 100vh はスマホのアドレスバー分ズレて下側が見えなくなることがあるため、
+       対応ブラウザでは動的ビューポート単位(dvh)を優先して使う */
+    height: calc(100vh - var(--header-height) - var(--nav-height) - 48px);
+    height: calc(100dvh - var(--header-height) - var(--nav-height) - 48px);
+    min-height: 320px;
+  }
+  .map-container {
+    width: 100%;
+    height: 100%;
     background: var(--color-outline); /* 読み込み中に見える背景色 */
   }
 
+  /* 地図の種類切り替え（通常・グレー・衛星） */
+  .map-type-switcher {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 15;
+    display: flex;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 20px;
+    padding: 3px;
+    gap: 2px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  }
+  .map-type-btn {
+    border: none;
+    background: none;
+    border-radius: 18px;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: bold;
+    color: var(--color-text-sub);
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .map-type-btn.active { background: var(--color-indigo); color: #fff; }
+
+  /* 現在地表示ボタン */
+  .locate-btn {
+    position: absolute;
+    left: 12px;
+    bottom: 16px;
+    z-index: 15;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: #fff;
+    font-size: 20px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+  }
+  .locate-btn.active { background: var(--color-primary); }
+  .locate-btn:active { opacity: 0.85; }
+
+  /* 現在地マーカー（青い点＋精度の円） */
+  .my-location-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #1A73E8;
+    border: 3px solid #fff;
+    box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.5);
+  }
+
   /* ---------- 右下の「＋」ボタン（記録追加） ---------- */
+  /* .screen の外に1つだけ配置し、地図/記録一覧タブのときだけJSで表示する */
   .fab {
     position: fixed;
     right: 20px;
@@ -363,10 +427,15 @@
     background: var(--color-indigo);
     color: #fff;
     font-size: 26px;
+    line-height: 56px;
+    text-align: center;
+    padding: 0;
     border: none;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
     cursor: pointer;
-    z-index: 20;
+    z-index: 60;
+    align-items: center;
+    justify-content: center;
   }
   .fab:active { opacity: 0.85; }
 
@@ -679,8 +748,19 @@
 
   <!-- 地図: みんなが記録したゴミをピンで表示 -->
   <section class="screen" id="screen-map">
-    <div id="mapContainer" class="map-container"></div>
-    <button class="fab" onclick="openAddRecordModal()">＋</button>
+    <div id="mapWrap" class="map-wrap">
+      <div id="mapContainer" class="map-container"></div>
+
+      <!-- 地図の種類切り替え（通常・グレー・衛星） -->
+      <div class="map-type-switcher" id="mapTypeSwitcher">
+        <button type="button" class="map-type-btn active" data-maptype="standard" onclick="setMainMapType('standard')">通常</button>
+        <button type="button" class="map-type-btn" data-maptype="gray" onclick="setMainMapType('gray')">グレー</button>
+        <button type="button" class="map-type-btn" data-maptype="satellite" onclick="setMainMapType('satellite')">衛星</button>
+      </div>
+
+      <!-- 現在地表示ボタン -->
+      <button type="button" class="locate-btn" id="locateBtn" onclick="toggleMyLocationOnMainMap()" aria-label="現在地を表示">📍</button>
+    </div>
   </section>
 
   <!-- 記録一覧: みんなの記録を新しい順に一覧表示 -->
@@ -690,7 +770,6 @@
       <div class="icon">📋</div>
       <p>まだ記録がありません。<br>右下の「＋」から最初の記録を投稿してみましょう。</p>
     </div>
-    <button class="fab" onclick="openAddRecordModal()">＋</button>
   </section>
 
   <!-- プロフィール -->
@@ -751,6 +830,15 @@
   </section>
 
 </main>
+
+<!-- ============================================================
+     右下の「＋」ボタン（記録追加）
+     ・.screen の中に置くとiOS SafariでのアニメーションによりFixed
+       配置がずれて画面外に出てしまうことがあるため、
+       .screen の外（bodyの直下）に1つだけ置き、
+       表示するタブだけJSで見せ/隠しする。
+     ============================================================ -->
+<button class="fab" id="mainFab" onclick="openAddRecordModal()" style="display:none;">＋</button>
 
 <!-- ============================================================
      ボトムナビゲーション
@@ -1260,12 +1348,27 @@ let currentDetailRecordId = null;
 let mainMap = null;           // 地図タブのLeafletマップ本体
 let mainMarkersLayer = null;  // 地図タブ上のピンをまとめて管理するレイヤー
 const mainMarkersById = {};   // { docId: L.Marker }
+let mainMapReady = false;     // 初期化処理(タイル読み込み等)が完了したか
 
 let formMap = null;           // 記録追加モーダル内のミニ地図
 let formMarker = null;        // ミニ地図上の位置指定マーカー
 
 let selectedCategoryId = null;
 let selectedPhotoDataUrl = null;
+
+/* --- 地図の種類(通常・グレー・衛星)切り替え用 --- */
+let mainBaseLayers = null;      // { standard, gray, satellite } の L.tileLayer
+let currentMainMapType = "standard";
+
+/* --- 現在地表示（GPSトラッキング）用 --- */
+let myLocationWatchId = null;   // navigator.geolocation.watchPosition のID
+let myLocationMarker = null;    // 青い現在地ドット
+let myLocationAccuracyCircle = null; // 現在地の精度円
+let isTrackingMyLocation = false;
+
+/* --- 地図をタップして後からピンを打つ機能用 --- */
+let pendingPinMarker = null;    // タップした場所に一時的に置くピン
+let pendingPinLatLng = null;    // そのピンの緯度経度
 
 /* -------------------------------------------------------------
    Firestoreの records コレクションをリアルタイム監視する。
@@ -1341,16 +1444,192 @@ function escapeHtml(text) {
 
 /* -------------------------------------------------------------
    地図タブの初期化・ピン描画
+
+   以前は画面切り替えのフェードアニメーション中（コンテナの幅・高さが
+   まだ正しく確定していないタイミング）にLeafletの地図を作ってしまい、
+   タイルの計算がずれて「地図が二重に重なって見える」表示崩れが
+   起きることがあった。
+   そのため、コンテナの実サイズが取得できてから初期化し、
+   初期化後も何度かサイズ再計算(invalidateSize)を行うようにしている。
    ------------------------------------------------------------- */
 function initMainMapIfNeeded() {
   if (mainMap) return; // 既に初期化済み
-  mainMap = L.map("mapContainer").setView(DEFAULT_MAP_CENTER, 12);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 19,
-  }).addTo(mainMap);
+  const container = document.getElementById("mapContainer");
+  if (!container) return;
+
+  // コンテナがまだ幅0（レイアウト確定前）の場合は、次のフレームまで待つ
+  if (container.clientWidth === 0 || container.clientHeight === 0) {
+    requestAnimationFrame(initMainMapIfNeeded);
+    return;
+  }
+
+  mainMap = L.map("mapContainer", { zoomControl: true }).setView(DEFAULT_MAP_CENTER, 12);
+
+  // 地図の種類（通常・グレー・衛星）をあとから切り替えられるよう、
+  // 3種類のタイルレイヤーを用意しておく
+  mainBaseLayers = {
+    standard: L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19,
+    }),
+    gray: L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+      maxZoom: 19,
+      subdomains: "abcd",
+    }),
+    satellite: L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      { attribution: "Tiles &copy; Esri", maxZoom: 19 }
+    ),
+  };
+  mainBaseLayers[currentMainMapType].addTo(mainMap);
+
   mainMarkersLayer = L.layerGroup().addTo(mainMap);
   renderMapMarkers(); // 初期化時点で既に取得済みの記録があれば反映
+
+  // 地図の空いている場所をタップすると、そこに後から記録用のピンを打てる
+  mainMap.on("click", (e) => onMainMapTap(e.latlng));
+
+  // 初期化直後・タイル読み込み後にもう一度サイズを確定させることで
+  // 表示崩れ（二重表示）を防ぐ
+  mainMap.whenReady(() => {
+    mainMapReady = true;
+    setTimeout(() => mainMap.invalidateSize(), 120);
+  });
+
+  // 画面回転・ウィンドウサイズ変更（アドレスバーの表示/非表示含む）でも
+  // 地図のサイズを再計算する
+  window.addEventListener("resize", handleMainMapResize);
+  window.addEventListener("orientationchange", handleMainMapResize);
+}
+
+function handleMainMapResize() {
+  if (mainMap) setTimeout(() => mainMap.invalidateSize(), 150);
+}
+
+/* ---------------- 地図の種類切り替え（通常・グレー・衛星） ---------------- */
+function setMainMapType(type) {
+  if (!mainMap || !mainBaseLayers || !mainBaseLayers[type] || type === currentMainMapType) return;
+  mainMap.removeLayer(mainBaseLayers[currentMainMapType]);
+  mainBaseLayers[type].addTo(mainMap);
+  currentMainMapType = type;
+  document.querySelectorAll("#mapTypeSwitcher .map-type-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.maptype === type);
+  });
+}
+
+/* ---------------- 現在地表示（GPSトラッキング） ---------------- */
+function toggleMyLocationOnMainMap() {
+  if (isTrackingMyLocation) {
+    stopTrackingMyLocation();
+  } else {
+    startTrackingMyLocation();
+  }
+}
+
+function startTrackingMyLocation() {
+  if (!("geolocation" in navigator)) {
+    alert("この端末では位置情報が使えません。");
+    return;
+  }
+  if (!mainMap) return;
+
+  isTrackingMyLocation = true;
+  const btn = document.getElementById("locateBtn");
+  if (btn) btn.classList.add("active");
+
+  let hasCentered = false;
+  myLocationWatchId = navigator.geolocation.watchPosition(
+    (position) => {
+      const latlng = [position.coords.latitude, position.coords.longitude];
+      updateMyLocationMarker(latlng, position.coords.accuracy);
+      if (!hasCentered) {
+        mainMap.setView(latlng, 16);
+        hasCentered = true;
+      }
+    },
+    (err) => {
+      stopTrackingMyLocation();
+      if (err.code === err.PERMISSION_DENIED) {
+        alert("現在地の取得が許可されていません。端末の設定をご確認ください。");
+      } else {
+        alert("現在地を取得できませんでした。電波の良い場所でもう一度お試しください。");
+      }
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+  );
+}
+
+function stopTrackingMyLocation() {
+  if (myLocationWatchId !== null) {
+    navigator.geolocation.clearWatch(myLocationWatchId);
+    myLocationWatchId = null;
+  }
+  isTrackingMyLocation = false;
+  const btn = document.getElementById("locateBtn");
+  if (btn) btn.classList.remove("active");
+  if (mainMap) {
+    if (myLocationMarker) { mainMap.removeLayer(myLocationMarker); myLocationMarker = null; }
+    if (myLocationAccuracyCircle) { mainMap.removeLayer(myLocationAccuracyCircle); myLocationAccuracyCircle = null; }
+  }
+}
+
+function updateMyLocationMarker(latlng, accuracy) {
+  if (!mainMap) return;
+  if (!myLocationMarker) {
+    const icon = L.divIcon({ className: "", html: '<div class="my-location-dot"></div>', iconSize: [16, 16] });
+    myLocationMarker = L.marker(latlng, { icon: icon, zIndexOffset: 1000, interactive: false }).addTo(mainMap);
+  } else {
+    myLocationMarker.setLatLng(latlng);
+  }
+
+  if (typeof accuracy === "number") {
+    if (!myLocationAccuracyCircle) {
+      myLocationAccuracyCircle = L.circle(latlng, {
+        radius: accuracy,
+        color: "#1A73E8",
+        fillColor: "#1A73E8",
+        fillOpacity: 0.12,
+        weight: 1,
+        interactive: false,
+      }).addTo(mainMap);
+    } else {
+      myLocationAccuracyCircle.setLatLng(latlng);
+      myLocationAccuracyCircle.setRadius(accuracy);
+    }
+  }
+}
+
+/* ---------------- 地図をタップして後からピンを打つ ---------------- */
+function onMainMapTap(latlng) {
+  clearPendingPin();
+  pendingPinLatLng = latlng;
+  pendingPinMarker = L.marker(latlng, { opacity: 0.85, bubblingMouseEvents: false }).addTo(mainMap);
+  pendingPinMarker
+    .bindPopup(
+      '<div style="text-align:center;">' +
+      '<div style="font-size:12px;margin-bottom:6px;">ここに記録を追加しますか？</div>' +
+      '<button style="font-size:12px;font-weight:bold;color:#fff;background:#1B3A6B;border:none;border-radius:14px;padding:6px 14px;cursor:pointer;" onclick="confirmPendingPin()">📍 ここに記録する</button>' +
+      "</div>"
+    )
+    .openPopup();
+  pendingPinMarker.on("popupclose", () => {
+    // 「記録する」を押さずにポップアップを閉じた場合は候補ピンを消す
+    if (pendingPinMarker) clearPendingPin();
+  });
+}
+
+function clearPendingPin() {
+  if (pendingPinMarker && mainMap) mainMap.removeLayer(pendingPinMarker);
+  pendingPinMarker = null;
+  pendingPinLatLng = null;
+}
+
+function confirmPendingPin() {
+  if (!pendingPinLatLng) return;
+  const latlng = [pendingPinLatLng.lat, pendingPinLatLng.lng];
+  clearPendingPin();
+  openAddRecordModal(latlng);
 }
 
 function renderMapMarkers() {
@@ -1362,7 +1641,9 @@ function renderMapMarkers() {
   Object.keys(recordsCache).forEach((id) => {
     const r = recordsCache[id];
     if (typeof r.lat !== "number" || typeof r.lng !== "number") return;
-    const marker = L.marker([r.lat, r.lng]).addTo(mainMarkersLayer);
+    // bubblingMouseEvents:false にして、ピンをタップしたときに
+    // 背後の地図タップ(あとからピン打ち機能)が誤動作しないようにする
+    const marker = L.marker([r.lat, r.lng], { bubblingMouseEvents: false }).addTo(mainMarkersLayer);
     marker.bindPopup(
       '<div style="width:140px;">' +
       '<img src="' + r.photoData + '" style="width:100%;height:90px;object-fit:cover;border-radius:8px;" alt="">' +
@@ -1378,7 +1659,7 @@ function renderMapMarkers() {
 /* -------------------------------------------------------------
    記録追加モーダル
    ------------------------------------------------------------- */
-function openAddRecordModal() {
+function openAddRecordModal(presetLatLng) {
   // フォームの状態をリセット
   selectedCategoryId = null;
   selectedPhotoDataUrl = null;
@@ -1397,11 +1678,27 @@ function openAddRecordModal() {
 
   document.getElementById("recordFormModal").classList.remove("hidden");
 
+  // このモーダルは画面下からせり上がる形式で、上部にわずかな隙間が残る。
+  // 地図タブを開いた状態でこのモーダルを開くと、その隙間から背後の
+  // メイン地図（生きたLeaflet地図）が透けて見えてしまい、
+  // モーダル内のミニ地図と合わせて「地図が二重に重なって見える」原因になっていた。
+  // → モーダルを開いている間は背後のメイン地図を非表示にする。
+  const mapWrapEl = document.getElementById("mapWrap");
+  if (mapWrapEl) mapWrapEl.style.visibility = "hidden";
+
   // モーダルを開いた直後はまだ画面上に幅0で存在するため、
   // 少し遅らせてから地図を初期化してサイズを正しく計算させる
   setTimeout(() => {
-    initFormMap(DEFAULT_MAP_CENTER);
-    useCurrentLocationForForm();
+    // 地図をタップして場所を指定済みの場合(あとからピン打ち)は、
+    // その場所を使い、GPSの現在地で上書きしないようにする
+    const center = presetLatLng || DEFAULT_MAP_CENTER;
+    initFormMap(center);
+    if (presetLatLng) {
+      document.getElementById("recordLocationStatus").textContent =
+        "地図でタップした場所を指定しました。違う場所であれば地図をタップして動かせます。";
+    } else {
+      useCurrentLocationForForm();
+    }
   }, 50);
 }
 
@@ -1411,6 +1708,11 @@ function closeAddRecordModal() {
     return;
   }
   document.getElementById("recordFormModal").classList.add("hidden");
+
+  // 隠しておいた背後のメイン地図を再表示し、サイズを再計算する
+  const mapWrapEl = document.getElementById("mapWrap");
+  if (mapWrapEl) mapWrapEl.style.visibility = "";
+  if (mainMap) setTimeout(() => mainMap.invalidateSize(), 50);
 }
 
 function selectCategory(id) {
@@ -1598,17 +1900,36 @@ function viewCurrentDetailOnMap() {
    7. 画面(タブ)切り替え
    ============================================================= */
 function switchScreen(name) {
+  const previousScreen = document.querySelector(".screen.active");
+  const previousName = previousScreen ? previousScreen.id.replace("screen-", "") : null;
+
   document.querySelectorAll(".screen").forEach((el) => el.classList.remove("active"));
   document.getElementById("screen-" + name).classList.add("active");
 
   document.querySelectorAll(".nav-btn").forEach((btn) => btn.classList.remove("active"));
   document.querySelector('.nav-btn[data-screen="' + name + '"]').classList.add("active");
 
+  // 「＋」ボタンは地図タブ・記録一覧タブでのみ表示する
+  // （.screen の外に1つだけ置いてあるので、ここで表示/非表示を切り替える）
+  const fab = document.getElementById("mainFab");
+  if (fab) fab.style.display = (name === "map" || name === "records") ? "flex" : "none";
+
+  // 地図タブから離れるときは、GPSトラッキングとタップ中のピン候補を片付ける
+  // （バッテリー消費を抑え、他画面に戻ってきたときに古いピンが残らないようにする）
+  if (previousName === "map" && name !== "map") {
+    stopTrackingMyLocation();
+    clearPendingPin();
+  }
+
   // 地図タブを開いたときだけ地図を初期化・サイズ再計算する
-  // （非表示のdivにLeafletの地図を作ると幅・高さが0で描画が崩れるため）
+  // （非表示のdivにLeafletの地図を作ると幅・高さが0で描画が崩れ、
+  //   「地図が二重に重なって見える」原因になるため、
+  //   フェードアニメーションが終わるのを少し待ってから初期化する）
   if (name === "map") {
-    initMainMapIfNeeded();
-    setTimeout(() => { if (mainMap) mainMap.invalidateSize(); }, 50);
+    setTimeout(() => {
+      initMainMapIfNeeded();
+      if (mainMap) mainMap.invalidateSize();
+    }, 80);
   }
 }
 
