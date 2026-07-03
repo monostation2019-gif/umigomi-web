@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>海ゴミ探究ノート</title>
 <meta name="description" content="伊勢志摩の海ゴミを記録・共有するPWAアプリ「海ゴミ探究ノート」">
-<meta name="theme-color" content="#2E7D6B">
+<meta name="theme-color" content="#1B3A6B">
 
 <!-- PWA設定ファイル -->
 <link rel="manifest" href="manifest.json">
@@ -30,6 +30,8 @@
     --color-text: #2B2E2C;         /* 純黒を避けた深いグレー */
     --color-text-sub: #6E7570;
     --color-outline: #DEDDD2;
+    --color-indigo: #1B3A6B;       /* 藍色: ヘッダー・フッターの背景 */
+    --color-indigo-icon: rgba(255, 255, 255, 0.65); /* 藍色背景上の非アクティブなアイコン */
     --nav-height: 64px;
     --header-height: 56px;
   }
@@ -51,13 +53,14 @@
     top: 0;
     z-index: 10;
     height: var(--header-height);
-    background: var(--color-surface);
+    background: var(--color-indigo);
+    color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: bold;
     font-size: 16px;
-    border-bottom: 1px solid var(--color-outline);
+    border-bottom: 1px solid var(--color-indigo);
     padding-top: env(safe-area-inset-top);
   }
 
@@ -154,8 +157,8 @@
     left: 0; right: 0; bottom: 0;
     height: calc(var(--nav-height) + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
-    background: var(--color-surface);
-    border-top: 1px solid var(--color-outline);
+    background: var(--color-indigo);
+    border-top: 1px solid var(--color-indigo);
     display: flex;
     z-index: 10;
   }
@@ -169,12 +172,12 @@
     justify-content: center;
     gap: 2px;
     font-size: 11px;
-    color: var(--color-text-sub);
+    color: var(--color-indigo-icon);
     cursor: pointer;
     padding: 4px 0;
   }
   nav.bottom-nav button .nav-icon { font-size: 20px; }
-  nav.bottom-nav button.active { color: var(--color-primary); font-weight: bold; }
+  nav.bottom-nav button.active { color: #fff; font-weight: bold; }
 
   /* ---------- ローディング/エラー(スプラッシュ) ---------- */
   #splash {
