@@ -163,6 +163,7 @@ input[type=file]{display:none;}
 .speciesRow .en{font-size:11px; color:var(--gray);}
 .speciesRow.active{border-color:var(--green-2); background:var(--green-pale);}
 .speciesEmpty{text-align:center; color:var(--gray); font-size:12.5px; padding:16px 0;}
+#pinMap{height:220px; width:100%; border-radius:14px; overflow:hidden; background:#dfe9e2;}
 
 .previewCard{margin:8px 18px; background:#fff; border-radius:20px; overflow:hidden; box-shadow:var(--shadow);}
 .previewCard img{width:100%; height:230px; object-fit:cover; background:#eee;}
@@ -333,6 +334,12 @@ input[type=file]{display:none;}
       <div class="catPickGrid" id="catPickGrid"></div>
     </div>
 
+    <div id="typeStage" class="hidden">
+      <div class="section-title" style="margin-top:14px;" id="typeStageTitle">ゴミの種類をえらんでください</div>
+      <div class="typeGrid" id="typeGrid" style="margin:0 18px 18px;"></div>
+      <button class="btn btn-outline" id="backToCatFromTypeBtn" style="margin:0 18px 18px; width:calc(100% - 36px);">‹ 図鑑の種類を選び直す</button>
+    </div>
+
     <div id="captureStage" class="hidden">
       <div class="cameraStage">
         <div class="cameraBox">
@@ -344,18 +351,20 @@ input[type=file]{display:none;}
           </div>
           <input type="file" id="photoInputCamera" accept="image/*" capture="environment">
           <input type="file" id="photoInputAlbum" accept="image/*">
-          <button class="btn btn-outline" id="backToCatBtn" style="margin-top:14px; width:100%;">‹ 図鑑の種類を選び直す</button>
+          <button class="btn btn-outline" id="backToTypeBtn" style="margin-top:14px; width:100%;">‹ 種類を選び直す</button>
         </div>
       </div>
     </div>
 
-    <div id="resultStage" class="hidden">
+    <div id="pinStage" class="hidden">
       <div class="previewCard">
         <img id="previewImg" src="" alt="撮影した写真">
         <div class="resultBox">
-          <div style="font-size:12px; color:var(--gray); font-weight:700; margin-bottom:8px;" id="selectStageLabel">種類を選んでください</div>
-          <div id="selectStage"></div>
+          <div style="font-size:12px; color:var(--gray); font-weight:700; margin-bottom:8px;">登録する場所を確認してください（ピンはドラッグで動かせます）</div>
+          <div id="pinMap"></div>
+          <div id="pinStatus" style="font-size:12px; color:var(--gray); margin:10px 0 14px;">現在地を取得中…</div>
           <div class="resultBtns">
+            <button class="btn btn-outline" id="retryPinBtn">📍 現在地を取得し直す</button>
             <button class="btn btn-primary" id="registerBtn" disabled>この内容で登録する</button>
             <button class="btn btn-outline" id="retakeBtn">撮り直す</button>
           </div>
@@ -800,6 +809,8 @@ renderZukanGrid(document.getElementById("zukanGrid2"));
 let pendingPhotoDataUrl = null;
 let pendingCategory = null;
 let pendingSelection = null; // { name, en, emoji }
+let pendingLat = null;
+let pendingLng = null;
 
 function renderCatPickGrid() {
   const grid = document.getElementById("catPickGrid");
@@ -816,56 +827,57 @@ function renderCatPickGrid() {
 function selectCategory(catId) {
   pendingCategory = catId;
   document.getElementById("catStage").classList.add("hidden");
-  document.getElementById("captureStage").classList.remove("hidden");
+  document.getElementById("typeStage").classList.remove("hidden");
   const cat = CATEGORIES.find(c => c.id === catId);
-  document.getElementById("captureHint").textContent = `「${cat.name}」に登録します。写真を撮ってください`;
+  document.getElementById("typeStageTitle").textContent = `「${cat.name}」の種類をえらんでください`;
+  renderTypeGrid();
 }
+
+function renderTypeGrid() {
+  const grid = document.getElementById("typeGrid");
+  const types = WASTE_TYPES[pendingCategory] || TRASH_TYPES;
+  grid.innerHTML = types.map(t => `
+    <button class="typeBtn" data-id="${t.id}"><span class="ic">${t.emoji}</span><span>${t.name}</span></button>
+  `).join("");
+  grid.querySelectorAll(".typeBtn").forEach(btn => btn.addEventListener("click", () => {
+    const t = types.find(x => x.id === btn.dataset.id);
+    selectType(t);
+  }));
+}
+
+function selectType(t) {
+  pendingSelection = { name: t.name, en: "", emoji: t.emoji };
+  document.getElementById("typeStage").classList.add("hidden");
+  document.getElementById("captureStage").classList.remove("hidden");
+  const cat = CATEGORIES.find(c => c.id === pendingCategory);
+  document.getElementById("captureHint").textContent = `${cat.emoji}${t.emoji} 「${t.name}」を撮影してください`;
+}
+
+document.getElementById("backToCatFromTypeBtn").addEventListener("click", resetCaptureStage);
+
+document.getElementById("backToTypeBtn").addEventListener("click", () => {
+  document.getElementById("captureStage").classList.add("hidden");
+  document.getElementById("typeStage").classList.remove("hidden");
+  document.getElementById("photoInputCamera").value = "";
+  document.getElementById("photoInputAlbum").value = "";
+});
 
 function resetCaptureStage() {
   pendingCategory = null;
   pendingSelection = null;
   pendingPhotoDataUrl = null;
+  pendingLat = null;
+  pendingLng = null;
   document.getElementById("catStage").classList.remove("hidden");
+  document.getElementById("typeStage").classList.add("hidden");
   document.getElementById("captureStage").classList.add("hidden");
-  document.getElementById("resultStage").classList.add("hidden");
+  document.getElementById("pinStage").classList.add("hidden");
   document.getElementById("photoInputCamera").value = "";
   document.getElementById("photoInputAlbum").value = "";
   renderCatPickGrid();
 }
-document.getElementById("backToCatBtn").addEventListener("click", resetCaptureStage);
 
-// 種類選択エリアを描画。ゴミ図鑑＝アイコンボタン、その他＝自由入力。
-function renderSelectStage() {
-  const el = document.getElementById("selectStage");
-  const label = document.getElementById("selectStageLabel");
-  const registerBtn = document.getElementById("registerBtn");
-  pendingSelection = null;
-  registerBtn.disabled = true;
-
-  if (WASTE_TYPES[pendingCategory]) {
-    label.textContent = "見つけたゴミの種類をえらんでください";
-    const types = WASTE_TYPES[pendingCategory];
-    el.innerHTML = `<div class="typeGrid">${types.map(t => `
-      <button class="typeBtn" data-id="${t.id}"><span class="ic">${t.emoji}</span><span>${t.name}</span></button>
-    `).join("")}</div>`;
-    el.querySelectorAll(".typeBtn").forEach(btn => btn.addEventListener("click", () => {
-      el.querySelectorAll(".typeBtn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      const t = types.find(x => x.id === btn.dataset.id);
-      pendingSelection = { name: t.name, en: "", emoji: t.emoji };
-      registerBtn.disabled = false;
-    }));
-  } else {
-    label.textContent = "見つけたものの名前を入力してください";
-    el.innerHTML = `<div class="speciesSearchBox"><input type="text" id="otherNameInput" placeholder="例：カニのはさみ など"></div>`;
-    document.getElementById("otherNameInput").addEventListener("input", (e) => {
-      const v = e.target.value.trim();
-      pendingSelection = v ? { name: v, en: "", emoji: "🔍" } : null;
-      registerBtn.disabled = !v;
-    });
-  }
-}
-
+/* ---------------- 撮影 → 位置ピン確認 ---------------- */
 function handlePhotoSelected(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -874,8 +886,9 @@ function handlePhotoSelected(e) {
     pendingPhotoDataUrl = reader.result;
     document.getElementById("previewImg").src = pendingPhotoDataUrl;
     document.getElementById("captureStage").classList.add("hidden");
-    document.getElementById("resultStage").classList.remove("hidden");
-    renderSelectStage();
+    document.getElementById("pinStage").classList.remove("hidden");
+    document.getElementById("registerBtn").disabled = true;
+    requestPinLocation();
   };
   reader.readAsDataURL(file);
 }
@@ -884,22 +897,66 @@ document.getElementById("photoInputAlbum").addEventListener("change", handlePhot
 
 document.getElementById("retakeBtn").addEventListener("click", () => {
   pendingPhotoDataUrl = null;
-  pendingSelection = null;
-  document.getElementById("resultStage").classList.add("hidden");
+  document.getElementById("pinStage").classList.add("hidden");
   document.getElementById("captureStage").classList.remove("hidden");
   document.getElementById("photoInputCamera").value = "";
   document.getElementById("photoInputAlbum").value = "";
 });
 
+let pinMap = null, pinMarker = null;
+const DEFAULT_PIN_LATLNG = [34.4855, 136.7096]; // 伊勢市付近（GPSが取れない時の初期位置）
+
+function initOrUpdatePinMap(lat, lng, draggable) {
+  const target = [lat, lng];
+  if (!pinMap) {
+    pinMap = L.map("pinMap", { zoomControl: false }).setView(target, 17);
+    L.tileLayer(TILE_DEFS.normal.url, TILE_DEFS.normal.options).addTo(pinMap);
+    pinMarker = L.marker(target, { draggable: true }).addTo(pinMap);
+    pinMarker.on("dragend", () => {
+      const p = pinMarker.getLatLng();
+      pendingLat = p.lat;
+      pendingLng = p.lng;
+      document.getElementById("pinStatus").textContent = "ピンの位置を手動で調整しました。この位置でよければ登録してください。";
+      document.getElementById("registerBtn").disabled = false;
+    });
+  } else {
+    pinMap.setView(target, 17);
+    pinMarker.setLatLng(target);
+  }
+  setTimeout(() => pinMap && pinMap.invalidateSize(), 150);
+}
+
+function requestPinLocation() {
+  document.getElementById("registerBtn").disabled = true;
+  document.getElementById("pinStatus").textContent = "現在地を取得中…";
+  if (!navigator.geolocation) {
+    initOrUpdatePinMap(...DEFAULT_PIN_LATLNG);
+    pendingLat = DEFAULT_PIN_LATLNG[0];
+    pendingLng = DEFAULT_PIN_LATLNG[1];
+    document.getElementById("pinStatus").textContent = "現在地が取得できないため、ピンをドラッグして位置を指定してください。";
+    document.getElementById("registerBtn").disabled = false;
+    return;
+  }
+  navigator.geolocation.getCurrentPosition((pos) => {
+    pendingLat = pos.coords.latitude;
+    pendingLng = pos.coords.longitude;
+    initOrUpdatePinMap(pendingLat, pendingLng);
+    document.getElementById("pinStatus").textContent = "現在地を取得しました。ずれている場合はピンをドラッグして調整できます。";
+    document.getElementById("registerBtn").disabled = false;
+  }, () => {
+    initOrUpdatePinMap(...DEFAULT_PIN_LATLNG);
+    pendingLat = DEFAULT_PIN_LATLNG[0];
+    pendingLng = DEFAULT_PIN_LATLNG[1];
+    document.getElementById("pinStatus").textContent = "現在地を取得できませんでした。ピンをドラッグして位置を指定してください。";
+    document.getElementById("registerBtn").disabled = false;
+  }, { enableHighAccuracy: true, timeout: 6000 });
+}
+document.getElementById("retryPinBtn").addEventListener("click", requestPinLocation);
+
 document.getElementById("registerBtn").addEventListener("click", async () => {
   if (!pendingSelection) return;
   if (!db || !currentUser) { toast("この内容で登録しました（デモ）"); resetCaptureStage(); showScreen("home"); return; }
-
-  navigator.geolocation?.getCurrentPosition(async (pos) => {
-    await saveDiscovery(pos.coords.latitude, pos.coords.longitude);
-  }, async () => {
-    await saveDiscovery(null, null); // no GPS permission — still save the record
-  }, { enableHighAccuracy: true, timeout: 6000 });
+  await saveDiscovery(pendingLat, pendingLng);
 });
 
 async function saveDiscovery(lat, lng) {
