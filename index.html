@@ -195,6 +195,8 @@ input[type=file]{display:none;}
 .rankRow .town{flex:1; font-size:14px; font-weight:700;}
 .rankRow .count{font-size:13px; color:var(--green); font-weight:900;}
 .rankRow .count small{color:var(--gray); font-weight:500; font-size:11px;}
+.rankDivider{padding:10px 16px; font-size:11.5px; font-weight:900; color:var(--green); background:var(--green-pale); border-bottom:1px solid var(--border);}
+.rankRow-plain .town{font-weight:500; color:var(--ink);}
 
 /* ---------- Bottom nav ---------- */
 #bottomNav{
@@ -290,8 +292,12 @@ input[type=file]{display:none;}
         <div class="cameraBox">
           <div class="ic">📷</div>
           <p>見つけたものを撮影してください<br>AIが自動で種類を判定します</p>
-          <label class="btn btn-primary" style="display:inline-flex;" for="photoInput">写真を撮る / 選ぶ</label>
-          <input type="file" id="photoInput" accept="image/*" capture="environment">
+          <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+            <label class="btn btn-primary" style="display:inline-flex;" for="photoInputCamera">📷 写真を撮る</label>
+            <label class="btn btn-outline" style="display:inline-flex;" for="photoInputAlbum">🖼️ アルバムから選択</label>
+          </div>
+          <input type="file" id="photoInputCamera" accept="image/*" capture="environment">
+          <input type="file" id="photoInputAlbum" accept="image/*">
         </div>
       </div>
     </div>
@@ -466,21 +472,180 @@ async function fetchAIClassification(categoryId) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-/* ---------------- Ranking mock data (replace with Firestore aggregation) ---------------- */
-const RANKING_MOCK = {
-  finds: [
-    ["宮町", 236], ["河崎", 198], ["宇治中之切町", 175], ["二見町江", 154],
-    ["大湊町", 132], ["御薗町", 98], ["小俣町元町", 86],
-  ],
-  species: [
-    ["宮町", 48], ["河崎", 44], ["宇治中之切町", 39], ["二見町江", 33],
-    ["大湊町", 28], ["御薗町", 21], ["小俣町元町", 17],
-  ],
-  likes: [
-    ["河崎", 312], ["宮町", 289], ["二見町江", 201], ["宇治中之切町", 188],
-    ["大湊町", 150], ["御薗町", 112], ["小俣町元町", 94],
-  ],
-};
+/* ---------------- 伊勢市 全町名リスト（50音順） ----------------
+   伊勢市公式「町別人口・世帯数統計表」（令和8年5月現在）に基づき、
+   丁目のある町は丁目単位で作成。読み（yomi）は並び替え用。 */
+const TOWNS = [
+  // ア行
+  { name: "旭町", yomi: "アサヒチョウ" },
+  { name: "朝熊町", yomi: "アサマチョウ" },
+  { name: "有滝町", yomi: "アリタキチョウ" },
+  { name: "粟野町", yomi: "アワノチョウ" },
+  { name: "磯町", yomi: "イソチョウ" },
+  { name: "一宇田町", yomi: "イチウダチョウ" },
+  { name: "一志町", yomi: "イチシチョウ" },
+  { name: "一之木1丁目", yomi: "イチノキ1" },
+  { name: "一之木2丁目", yomi: "イチノキ2" },
+  { name: "一之木3丁目", yomi: "イチノキ3" },
+  { name: "一之木4丁目", yomi: "イチノキ4" },
+  { name: "一之木5丁目", yomi: "イチノキ5" },
+  { name: "一色町", yomi: "イッシキチョウ" },
+  { name: "岩渕1丁目", yomi: "イワブチ1" },
+  { name: "岩渕2丁目", yomi: "イワブチ2" },
+  { name: "岩渕3丁目", yomi: "イワブチ3" },
+  { name: "上地町", yomi: "ウエジチョウ" },
+  { name: "上野町", yomi: "ウエノチョウ" },
+  { name: "植山町", yomi: "ウエヤマチョウ" },
+  { name: "宇治今在家町", yomi: "ウジイマザイケチョウ" },
+  { name: "宇治浦田1丁目", yomi: "ウジウラタ1" },
+  { name: "宇治浦田2丁目", yomi: "ウジウラタ2" },
+  { name: "宇治浦田3丁目", yomi: "ウジウラタ3" },
+  { name: "宇治館町", yomi: "ウジタチチョウ" },
+  { name: "宇治中之切町", yomi: "ウジナカノキリチョウ" },
+  { name: "浦口1丁目", yomi: "ウラグチ1" },
+  { name: "浦口2丁目", yomi: "ウラグチ2" },
+  { name: "浦口3丁目", yomi: "ウラグチ3" },
+  { name: "浦口4丁目", yomi: "ウラグチ4" },
+  { name: "円座町", yomi: "エンザチョウ" },
+  { name: "大倉町", yomi: "オオクラチョウ" },
+  { name: "大世古1丁目", yomi: "オオゼコ1" },
+  { name: "大世古2丁目", yomi: "オオゼコ2" },
+  { name: "大世古3丁目", yomi: "オオゼコ3" },
+  { name: "大世古4丁目", yomi: "オオゼコ4" },
+  { name: "大湊町", yomi: "オオミナトチョウ" },
+  { name: "岡本1丁目", yomi: "オカモト1" },
+  { name: "岡本2丁目", yomi: "オカモト2" },
+  { name: "岡本3丁目", yomi: "オカモト3" },
+  { name: "尾上町", yomi: "オノエチョウ" },
+  { name: "小俣町明野", yomi: "オバタチョウアケノ" },
+  { name: "小俣町新村", yomi: "オバタチョウシムラ" },
+  { name: "小俣町新村一ノ岡", yomi: "オバタチョウシムライチノオカ" },
+  { name: "小俣町新村百町", yomi: "オバタチョウシムラヒャクチョウ" },
+  { name: "小俣町新村石川", yomi: "オバタチョウシムライシカワ" },
+  { name: "小俣町相合", yomi: "オバタチョウソウゴウ" },
+  { name: "小俣町本町", yomi: "オバタチョウホンマチ" },
+  { name: "小俣町宮前", yomi: "オバタチョウミヤマエ" },
+  { name: "小俣町元町", yomi: "オバタチョウモトマチ" },
+  { name: "小俣町湯田", yomi: "オバタチョウユタ" },
+  // カ行
+  { name: "柏町", yomi: "カシワチョウ" },
+  { name: "樫原町", yomi: "カシワラチョウ" },
+  { name: "鹿海町", yomi: "カノミチョウ" },
+  { name: "神薗町", yomi: "カミソノチョウ" },
+  { name: "神社港", yomi: "カミヤシロコウ" },
+  { name: "河崎1丁目", yomi: "カワサキ1" },
+  { name: "河崎2丁目", yomi: "カワサキ2" },
+  { name: "河崎3丁目", yomi: "カワサキ3" },
+  { name: "川端町", yomi: "カワバタチョウ" },
+  { name: "楠部町", yomi: "クスベチョウ" },
+  { name: "久世戸町", yomi: "クセドチョウ" },
+  { name: "黒瀬町", yomi: "クロセチョウ" },
+  { name: "小木町", yomi: "コウギチョウ" },
+  { name: "神田久志本町", yomi: "コウダクシモトチョウ" },
+  // サ行
+  { name: "桜木町", yomi: "サクラギチョウ" },
+  { name: "下野町", yomi: "シモノチョウ" },
+  { name: "神久1丁目", yomi: "ジンキュウ1" },
+  { name: "神久2丁目", yomi: "ジンキュウ2" },
+  { name: "神久3丁目", yomi: "ジンキュウ3" },
+  { name: "神久4丁目", yomi: "ジンキュウ4" },
+  { name: "神久5丁目", yomi: "ジンキュウ5" },
+  { name: "神久6丁目", yomi: "ジンキュウ6" },
+  { name: "勢田町", yomi: "セイタチョウ" },
+  { name: "佐八町", yomi: "ソウチチョウ" },
+  { name: "曽祢1丁目", yomi: "ソネ1" },
+  { name: "曽祢2丁目", yomi: "ソネ2" },
+  // タ行
+  { name: "竹ケ鼻町", yomi: "タケガハナチョウ" },
+  { name: "田尻町", yomi: "タジリチョウ" },
+  { name: "辻久留1丁目", yomi: "ツジクル1" },
+  { name: "辻久留2丁目", yomi: "ツジクル2" },
+  { name: "辻久留3丁目", yomi: "ツジクル3" },
+  { name: "辻久留町", yomi: "ツジクルチョウ" },
+  { name: "津村町", yomi: "ツムラチョウ" },
+  { name: "通町", yomi: "トオリチョウ" },
+  { name: "常磐1丁目", yomi: "トキワ1" },
+  { name: "常磐2丁目", yomi: "トキワ2" },
+  { name: "常磐3丁目", yomi: "トキワ3" },
+  { name: "常磐町", yomi: "トキワチョウ" },
+  { name: "豊川町", yomi: "トヨカワチョウ" },
+  // ナ行
+  { name: "中島1丁目", yomi: "ナカジマ1" },
+  { name: "中島2丁目", yomi: "ナカジマ2" },
+  { name: "中須町", yomi: "ナカズチョウ" },
+  { name: "中之町", yomi: "ナカノチョウ" },
+  { name: "中村町", yomi: "ナカムラチョウ" },
+  { name: "中村町桜が丘", yomi: "ナカムラチョウサクラガオカ" },
+  { name: "西豊浜町", yomi: "ニシトヨハマチョウ" },
+  { name: "野村町", yomi: "ノムラチョウ" },
+  // ハ行
+  { name: "東大淀町", yomi: "ヒガシオイズチョウ" },
+  { name: "東豊浜町", yomi: "ヒガシトヨハマチョウ" },
+  { name: "吹上1丁目", yomi: "フキアゲ1" },
+  { name: "吹上2丁目", yomi: "フキアゲ2" },
+  { name: "藤里町", yomi: "フジサトチョウ" },
+  { name: "二俣1丁目", yomi: "フタマタ1" },
+  { name: "二俣2丁目", yomi: "フタマタ2" },
+  { name: "二俣3丁目", yomi: "フタマタ3" },
+  { name: "二俣4丁目", yomi: "フタマタ4" },
+  { name: "二俣町", yomi: "フタマタチョウ" },
+  { name: "二見町今一色", yomi: "フタミチョウイマイシキ" },
+  { name: "二見町江", yomi: "フタミチョウエ" },
+  { name: "二見町荘", yomi: "フタミチョウショウ" },
+  { name: "二見町茶屋", yomi: "フタミチョウチャヤ" },
+  { name: "二見町西", yomi: "フタミチョウニシ" },
+  { name: "二見町光の街", yomi: "フタミチョウヒカリノマチ" },
+  { name: "二見町松下", yomi: "フタミチョウマツシタ" },
+  { name: "二見町溝口", yomi: "フタミチョウミゾグチ" },
+  { name: "二見町三津", yomi: "フタミチョウミツ" },
+  { name: "二見町山田原", yomi: "フタミチョウヤマダハラ" },
+  { name: "船江1丁目", yomi: "フナエ1" },
+  { name: "船江2丁目", yomi: "フナエ2" },
+  { name: "船江3丁目", yomi: "フナエ3" },
+  { name: "船江4丁目", yomi: "フナエ4" },
+  { name: "古市町", yomi: "フルイチチョウ" },
+  { name: "本町", yomi: "ホンマチ" },
+  // マ行
+  { name: "前山町", yomi: "マエヤマチョウ" },
+  { name: "馬瀬町", yomi: "マゼチョウ" },
+  { name: "御薗町王中島", yomi: "ミソノチョウオウナカジマ" },
+  { name: "御薗町小林", yomi: "ミソノチョウオハヤシ" },
+  { name: "御薗町上條", yomi: "ミソノチョウカミジョウ" },
+  { name: "御薗町新開", yomi: "ミソノチョウシンガイ" },
+  { name: "御薗町高向", yomi: "ミソノチョウタカブク" },
+  { name: "御薗町長屋", yomi: "ミソノチョウナガヤ" },
+  { name: "宮川1丁目", yomi: "ミヤガワ1" },
+  { name: "宮川2丁目", yomi: "ミヤガワ2" },
+  { name: "宮後1丁目", yomi: "ミヤジリ1" },
+  { name: "宮後2丁目", yomi: "ミヤジリ2" },
+  { name: "宮後3丁目", yomi: "ミヤジリ3" },
+  { name: "宮町1丁目", yomi: "ミヤマチ1" },
+  { name: "宮町2丁目", yomi: "ミヤマチ2" },
+  { name: "村松町", yomi: "ムラマツチョウ" },
+  // ヤ行
+  { name: "矢持町上村", yomi: "ヤモチカミムラ" },
+  { name: "矢持町下村", yomi: "ヤモチシモムラ" },
+  { name: "矢持町菖蒲", yomi: "ヤモチショウブ" },
+  { name: "矢持町床木", yomi: "ヤモチトコギ" },
+  { name: "八日市場町", yomi: "ヨウカイチバチョウ" },
+  { name: "横輪町", yomi: "ヨコワチョウ" },
+  // ラ行・ワ行
+  { name: "倭町", yomi: "ワチョウ" },
+];
+
+/* ---------------- Ranking data ----------------
+   まだ誰も登録していないので、全町0件からの一斉スタート。
+   { finds: {"町名": 件数, ...}, species: {...}, likes: {...} }
+   実際の発見が登録され次第、Firestoreの集計結果でここを埋めるように差し替える。 */
+const RANKING_DATA = { finds: {}, species: {}, likes: {} };
+
+// 件数（降順）→ 同数の場合は町名の50音順、で並べたランキング配列を作る
+function buildRankingList(type) {
+  const counts = RANKING_DATA[type] || {};
+  return TOWNS
+    .map(t => ({ name: t.name, yomi: t.yomi, count: counts[t.name] || 0 }))
+    .sort((a, b) => b.count - a.count || a.yomi.localeCompare(b.yomi, "ja"));
+}
 
 /* ============================= Navigation ============================= */
 const screens = ["home", "zukan", "discover", "map", "mypage", "ranking"];
@@ -601,10 +766,11 @@ let pendingCategory = "other";
 function resetCaptureStage() {
   document.getElementById("captureStage").classList.remove("hidden");
   document.getElementById("resultStage").classList.add("hidden");
-  document.getElementById("photoInput").value = "";
+  document.getElementById("photoInputCamera").value = "";
+  document.getElementById("photoInputAlbum").value = "";
 }
 
-document.getElementById("photoInput").addEventListener("change", async (e) => {
+async function handlePhotoSelected(e) {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
@@ -629,7 +795,9 @@ document.getElementById("photoInput").addEventListener("change", async (e) => {
       .map(([n, p]) => `<span class="subChip">${n} ${p}%</span>`).join("");
   };
   reader.readAsDataURL(file);
-});
+}
+document.getElementById("photoInputCamera").addEventListener("change", handlePhotoSelected);
+document.getElementById("photoInputAlbum").addEventListener("change", handlePhotoSelected);
 
 document.getElementById("retakeBtn").addEventListener("click", resetCaptureStage);
 
@@ -765,16 +933,33 @@ function renderAreaStatsPlaceholder() {
 
 /* ============================= Ranking ============================= */
 let rankType = "finds", rankPeriod = "month";
+const RANK_CUTOFF = 30; // 30位まで順位表示。31位以降は50音順でリスト
 function renderRanking() {
   const el = document.getElementById("rankList");
-  const data = RANKING_MOCK[rankType];
+  const list = buildRankingList(rankType);
   const medals = ["🥇", "🥈", "🥉"];
-  el.innerHTML = data.map(([town, count], i) => `
-    <div class="rankRow ${i === 0 ? "top1" : i === 1 ? "top2" : i === 2 ? "top3" : ""}">
-      <div class="medal">${medals[i] || i + 1}</div>
-      <div class="town">${town}</div>
-      <div class="count">${count}<small>件</small></div>
-    </div>`).join("");
+  let html = "";
+  list.forEach((item, i) => {
+    if (i === RANK_CUTOFF) {
+      html += `<div class="rankDivider">${RANK_CUTOFF + 1}位以降（50音順）</div>`;
+    }
+    if (i < RANK_CUTOFF) {
+      html += `
+        <div class="rankRow ${i === 0 ? "top1" : i === 1 ? "top2" : i === 2 ? "top3" : ""}">
+          <div class="medal">${medals[i] || i + 1}</div>
+          <div class="town">${item.name}</div>
+          <div class="count">${item.count}<small>件</small></div>
+        </div>`;
+    } else {
+      html += `
+        <div class="rankRow rankRow-plain">
+          <div class="medal"></div>
+          <div class="town">${item.name}</div>
+          <div class="count">${item.count}<small>件</small></div>
+        </div>`;
+    }
+  });
+  el.innerHTML = html;
 }
 document.querySelectorAll(".rankTabs button").forEach(b => b.addEventListener("click", () => {
   document.querySelectorAll(".rankTabs button").forEach(x => x.classList.remove("active"));
