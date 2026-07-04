@@ -2,1196 +2,619 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-<title>まちみっけ｜伊勢市限定版</title>
-<meta name="theme-color" content="#1f5c3a">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>ポイ捨てゴミマップ</title>
+<meta name="theme-color" content="#2F6FED">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
+
 <style>
 :root{
-  --green:#1f5c3a;
-  --green-2:#2f8a52;
-  --green-pale:#e9f5ec;
-  --cream:#faf8f2;
-  --ink:#2b2b26;
-  --gray:#8a8a82;
-  --border:#e6e2d6;
-  --orange:#f2a33c;
-  --pink:#e8688f;
-  --blue:#4a90d9;
-  --radius:20px;
-  --shadow:0 4px 18px rgba(31,92,58,.10);
-  --safe-b: env(safe-area-inset-bottom, 0px);
-  --safe-t: env(safe-area-inset-top, 0px);
+  --blue:#2F6FED;
+  --blue-dark:#1F4FC4;
+  --teal:#3FA796;
+  --amber:#F5A623;
+  --red:#E85D4E;
+  --bg:#F5F8FC;
+  --card:#FFFFFF;
+  --ink:#1F2937;
+  --muted:#6B7280;
+  --line:#E4E9F2;
+  --radius:18px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-html,body{height:100%;}
+html,body{height:100%; margin:0; overscroll-behavior:none;}
 body{
-  margin:0; font-family:'Zen Maru Gothic', sans-serif; background:var(--cream); color:var(--ink);
-  overscroll-behavior-y:none;
+  font-family:"Noto Sans JP", sans-serif;
+  color:var(--ink);
+  background:var(--bg);
+  display:flex; flex-direction:column;
+  height:100dvh; overflow:hidden;
 }
-#appFrame{
-  max-width:480px; margin:0 auto; min-height:100dvh; background:var(--cream);
-  position:relative; display:flex; flex-direction:column;
-}
-button{font-family:inherit; cursor:pointer;}
-img{max-width:100%; display:block;}
-
-/* ---------- Login overlay ---------- */
-#loginScreen{
-  position:fixed; inset:0; z-index:200; background:linear-gradient(160deg,var(--green) 0%,#123d27 100%);
-  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:28px; padding:32px;
-  color:#fff; text-align:center;
-}
-#loginScreen .logo{font-size:44px; font-weight:900; letter-spacing:1px;}
-#loginScreen .logo span{color:#ffd77a;}
-#loginScreen .badge{
-  background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.4); border-radius:999px;
-  padding:6px 18px; font-size:13px; font-weight:700;
-}
-#loginScreen .tagline{font-size:15px; opacity:.9; line-height:1.8; max-width:320px;}
-#loginScreen .authBtns{width:100%; max-width:320px; display:flex; flex-direction:column; gap:12px; margin-top:8px;}
-.btn{
-  border:none; border-radius:14px; padding:15px 18px; font-size:15px; font-weight:700;
-  display:flex; align-items:center; justify-content:center; gap:10px; transition:transform .1s ease, opacity .15s;
-}
-.btn:active{transform:scale(.97);}
-.btn:disabled{opacity:.4; pointer-events:none;}
-.btn-google{background:#fff; color:#333;}
-.btn-apple{background:#000; color:#fff;}
-.btn-guest{background:rgba(255,255,255,.12); color:#fff; border:1px solid rgba(255,255,255,.5);}
-.btn-primary{background:var(--green-2); color:#fff;}
-.btn-outline{background:#fff; color:var(--green); border:1.5px solid var(--green-pale); box-shadow:var(--shadow);}
+h1,h2,h3,.brand{font-family:"Zen Kaku Gothic New", sans-serif;}
 
 /* ---------- Header ---------- */
-.topbar{
-  padding:calc(14px + var(--safe-t)) 20px 12px; display:flex; align-items:center; justify-content:space-between;
-  background:var(--cream); position:sticky; top:0; z-index:20;
+header{
+  position:relative; z-index:20;
+  padding:calc(10px + var(--safe-top)) 16px 10px;
+  background:linear-gradient(135deg, var(--blue), var(--blue-dark));
+  color:#fff;
+  display:flex; align-items:center; justify-content:space-between;
+  box-shadow:0 4px 14px rgba(47,111,237,0.25);
 }
-.topbar h1{font-size:19px; margin:0; font-weight:900; color:var(--green);}
-.topbar .iconbtn{
-  width:38px; height:38px; border-radius:50%; background:#fff; border:1px solid var(--border);
-  display:flex; align-items:center; justify-content:center; font-size:17px; color:var(--green);
-}
-
-/* ---------- Screens ---------- */
-.screen{display:none; flex:1; padding-bottom:calc(88px + var(--safe-b)); animation:fadeIn .18s ease;}
-.screen.active{display:block;}
-@keyframes fadeIn{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
-
-/* ---------- HOME ---------- */
-.home-hero{
-  margin:8px 18px 18px; padding:26px 22px 22px; border-radius:24px;
-  background:linear-gradient(160deg,#1f5c3a 0%, #2f8a52 100%); color:#fff; position:relative; overflow:hidden;
-  box-shadow:var(--shadow);
-}
-.home-hero::after{
-  content:""; position:absolute; right:-30px; bottom:-40px; width:160px; height:160px; border-radius:50%;
-  background:rgba(255,255,255,.08);
-}
-.home-hero .logo{font-size:30px; font-weight:900; margin:0 0 8px;}
-.home-hero .logo span{color:#ffd77a;}
-.home-hero .badge{
-  display:inline-block; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.4);
-  border-radius:999px; padding:4px 14px; font-size:12px; font-weight:700; margin-bottom:14px;
-}
-.home-hero p{font-size:13.5px; line-height:1.8; opacity:.92; margin:0 0 18px; position:relative; z-index:1;}
-.discoverBtn{
-  width:100%; background:#fff; color:var(--green); font-size:16px; font-weight:900; border-radius:16px;
-  padding:16px; display:flex; align-items:center; justify-content:center; gap:10px; border:none;
-  box-shadow:0 6px 16px rgba(0,0,0,.15); position:relative; z-index:1;
+.brand{font-weight:900; font-size:17px; display:flex; align-items:center; gap:8px;}
+.brand .leaf{font-size:18px;}
+.header-btn{
+  width:36px; height:36px; border-radius:50%;
+  background:rgba(255,255,255,0.18); border:none; color:#fff;
+  display:flex; align-items:center; justify-content:center; font-size:16px;
 }
 
-.quicknav{display:flex; gap:12px; margin:0 18px 22px;}
-.quicknav button{
-  flex:1; background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px 6px;
-  display:flex; flex-direction:column; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--ink);
-  box-shadow:var(--shadow);
-}
-.quicknav .ic{font-size:20px;}
+/* ---------- Map area ---------- */
+#map-wrap{position:relative; flex:1; min-height:0;}
+#map{position:absolute; inset:0;}
+.leaflet-control-layers{border-radius:12px !important; overflow:hidden; font-family:"Noto Sans JP", sans-serif;}
 
-.section-title{margin:0 18px 10px; font-size:15px; font-weight:900; color:var(--green); display:flex; align-items:center; gap:6px;}
-.statsRow{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:0 18px 22px;}
-.statCard{background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px 8px; text-align:center;}
-.statCard .num{font-size:20px; font-weight:900; color:var(--green);}
-.statCard .lbl{font-size:11px; color:var(--gray); margin-top:2px;}
+.mentor-chip{
+  position:absolute; top:14px; left:14px; right:70px; z-index:15;
+  background:var(--card); border-radius:16px; padding:10px 12px;
+  box-shadow:0 6px 18px rgba(20,30,60,0.12);
+  display:flex; gap:10px; align-items:flex-start;
+  animation:slideIn .35s ease;
+}
+.mentor-chip .face{
+  width:34px; height:34px; border-radius:50%; flex:none;
+  background:#FFE7B8; display:flex; align-items:center; justify-content:center; font-size:18px;
+}
+.mentor-chip p{margin:0; font-size:12.5px; line-height:1.5; color:var(--ink);}
+.mentor-chip .close{
+  position:absolute; top:4px; right:6px; border:none; background:none; color:var(--muted); font-size:14px; padding:4px;
+}
+@keyframes slideIn{from{opacity:0; transform:translateY(-8px);} to{opacity:1; transform:translateY(0);}}
 
-.zukanGrid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:0 18px 24px;}
-.zukanItem{display:flex; flex-direction:column; align-items:center; gap:6px;}
-.zukanItem .circle{
-  width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px;
-  box-shadow:var(--shadow);
+.fab-report{
+  position:absolute; z-index:15; right:18px; bottom:96px;
+  width:60px; height:60px; border-radius:50%; border:none;
+  background:linear-gradient(135deg, var(--teal), #2c8879);
+  color:#fff; font-size:28px; box-shadow:0 10px 24px rgba(63,167,150,0.45);
+  display:flex; align-items:center; justify-content:center;
 }
-.zukanItem .lbl{font-size:10.5px; text-align:center; color:var(--ink); font-weight:700; line-height:1.3;}
-
-/* ---------- CAMERA / DISCOVER ---------- */
-.cameraStage{margin:8px 18px; text-align:center;}
-.cameraBox{
-  border:2px dashed var(--border); border-radius:20px; padding:40px 16px; background:#fff;
-}
-.cameraBox .ic{font-size:52px; margin-bottom:10px;}
-.cameraBox p{font-size:13px; color:var(--gray); margin:6px 0 18px;}
-input[type=file]{display:none;}
-
-/* ---------- Category / Type picker (manual selection, no AI) ---------- */
-.typeGrid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:6px 0 4px;}
-.typeBtn{
-  display:flex; flex-direction:column; align-items:center; gap:6px; background:#fff;
-  border:2px solid var(--border); border-radius:14px; padding:12px 4px; font-size:11.5px; font-weight:700; color:var(--ink);
-}
-.typeBtn .ic{font-size:24px;}
-.typeBtn.active{border-color:var(--green-2); background:var(--green-pale); color:var(--green);}
-
-.speciesSearchBox{margin:6px 0 10px;}
-.speciesSearchBox input{
-  width:100%; box-sizing:border-box; border:1.5px solid var(--border); border-radius:14px;
-  padding:12px 14px; font-size:14px; font-family:inherit; background:var(--cream);
-}
-.speciesList{display:flex; flex-direction:column; gap:8px; max-height:280px; overflow-y:auto; padding-right:2px;}
-.speciesRow{display:flex; align-items:center; gap:12px; background:#fff; border:1.5px solid var(--border); border-radius:14px; padding:10px 12px;}
-.speciesRow .ic{font-size:20px;}
-.speciesRow .nm{font-weight:700; font-size:13.5px;}
-.speciesRow .en{font-size:11px; color:var(--gray);}
-.speciesRow.active{border-color:var(--green-2); background:var(--green-pale);}
-.speciesEmpty{text-align:center; color:var(--gray); font-size:12.5px; padding:16px 0;}
-#pinMap{height:220px; width:100%; border-radius:14px; overflow:hidden; background:#dfe9e2;}
-
-.previewCard{margin:8px 18px; background:#fff; border-radius:20px; overflow:hidden; box-shadow:var(--shadow);}
-.previewCard img{width:100%; height:230px; object-fit:cover; background:#eee;}
-.resultBox{padding:16px 18px 20px;}
-.resultTop{display:flex; align-items:center; justify-content:space-between;}
-.resultTop .name{font-size:17px; font-weight:900;}
-.resultTop .en{font-size:12px; color:var(--gray);}
-.resultTop .pct{font-size:22px; font-weight:900; color:var(--green);}
-.subChoices{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;}
-.subChip{background:var(--green-pale); color:var(--green); font-size:12px; font-weight:700; padding:6px 12px; border-radius:999px;}
-.resultBtns{display:flex; flex-direction:column; gap:10px; margin-top:18px;}
-
-/* ---------- MAP ---------- */
-.filterRow{display:flex; gap:8px; margin:10px 18px 12px; overflow-x:auto; padding-bottom:2px;}
-.filterChip{
-  flex:0 0 auto; padding:8px 16px; border-radius:999px; font-size:12.5px; font-weight:700; border:1.5px solid var(--border);
-  background:#fff; color:var(--gray); white-space:nowrap;
-}
-.filterChip.active{background:var(--green); color:#fff; border-color:var(--green);}
-.mapWrap{position:relative; margin:0 18px; border-radius:20px; overflow:hidden; box-shadow:var(--shadow);}
-#leafletMap{height:65vh; min-height:460px; width:100%; background:#dfe9e2;}
-.trashPinIcon{background:none !important; border:none !important;}
-.trashPinInner{
-  width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-  font-size:15px; line-height:1; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.35);
-}
-.mapTypeCtrl{
-  position:absolute; top:10px; right:10px; z-index:1000; display:flex; flex-direction:column; gap:4px;
-  background:rgba(255,255,255,.96); border-radius:14px; padding:4px; box-shadow:var(--shadow);
-}
-.mapTypeCtrl button{
-  border:none; background:none; padding:7px 12px; font-size:11.5px; font-weight:700; color:var(--gray);
-  border-radius:10px; white-space:nowrap; text-align:center;
-}
-.mapTypeCtrl button.active{background:var(--green); color:#fff;}
-.areaStats{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:14px 18px;}
-.areaStats .cell{background:#fff; border:1px solid var(--border); border-radius:14px; padding:10px 4px; text-align:center;}
-.areaStats .cell .n{font-size:16px; font-weight:900; color:var(--green);}
-.areaStats .cell .l{font-size:10.5px; color:var(--gray); margin-top:2px;}
-
-/* ---------- MYPAGE ---------- */
-.profileCard{
-  margin:8px 18px 18px; background:linear-gradient(160deg,#1f5c3a,#2f8a52); border-radius:22px; padding:22px;
-  color:#fff; display:flex; align-items:center; gap:14px; box-shadow:var(--shadow);
-}
-.profileCard .avatar{
-  width:58px; height:58px; border-radius:50%; background:rgba(255,255,255,.2); display:flex; align-items:center;
-  justify-content:center; font-size:26px; flex:none;
-}
-.profileCard .name{font-size:16px; font-weight:900;}
-.profileCard .lv{font-size:12px; opacity:.9; margin-top:2px;}
-.mypageStats{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:0 18px 20px;}
-.menuList{margin:0 18px 20px; background:#fff; border-radius:18px; border:1px solid var(--border); overflow:hidden;}
-.menuList button{
-  width:100%; display:flex; align-items:center; justify-content:space-between; padding:15px 18px; background:none;
-  border:none; border-bottom:1px solid var(--border); font-size:14px; font-weight:700; color:var(--ink);
-}
-.menuList button:last-child{border-bottom:none;}
-.menuList .left{display:flex; align-items:center; gap:12px;}
-.menuList .badgeNum{background:var(--green-pale); color:var(--green); font-size:11px; font-weight:900; padding:2px 9px; border-radius:999px;}
-
-/* ---------- RANKING ---------- */
-.rankTabs{display:flex; gap:8px; margin:8px 18px 10px;}
-.rankTabs button{flex:1; padding:9px; border-radius:12px; border:1.5px solid var(--border); background:#fff; font-size:12.5px; font-weight:700; color:var(--gray);}
-.rankTabs button.active{background:var(--green); color:#fff; border-color:var(--green);}
-.periodTabs{display:flex; gap:16px; margin:0 20px 12px; border-bottom:1px solid var(--border);}
-.periodTabs button{background:none; border:none; padding:8px 2px; font-size:13px; font-weight:700; color:var(--gray); border-bottom:2px solid transparent;}
-.periodTabs button.active{color:var(--green); border-color:var(--green);}
-.rankList{margin:0 18px; background:#fff; border-radius:18px; border:1px solid var(--border); overflow:hidden;}
-.rankRow{display:flex; align-items:center; gap:12px; padding:13px 16px; border-bottom:1px solid var(--border);}
-.rankRow:last-child{border-bottom:none;}
-.rankRow .medal{width:26px; text-align:center; font-size:15px; font-weight:900; color:var(--gray);}
-.rankRow.top1 .medal{color:#e0a627;}
-.rankRow.top2 .medal{color:#9aa0a6;}
-.rankRow.top3 .medal{color:#b0703b;}
-.rankRow .town{flex:1; font-size:14px; font-weight:700;}
-.rankRow .count{font-size:13px; color:var(--green); font-weight:900;}
-.rankRow .count small{color:var(--gray); font-weight:500; font-size:11px;}
-.rankDivider{padding:10px 16px; font-size:11.5px; font-weight:900; color:var(--green); background:var(--green-pale); border-bottom:1px solid var(--border);}
-.rankRow-plain .town{font-weight:500; color:var(--ink);}
-
-/* ---------- Bottom nav ---------- */
-#bottomNav{
-  position:fixed; left:0; right:0; bottom:0; max-width:480px; margin:0 auto; background:#fff;
-  border-top:1px solid var(--border); display:flex; align-items:center; justify-content:space-around;
-  padding:8px 6px calc(8px + var(--safe-b)); z-index:50;
-}
-#bottomNav button{
-  background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:3px;
-  font-size:10.5px; color:var(--gray); font-weight:700; flex:1; padding:4px 0;
-}
-#bottomNav button .ic{font-size:19px;}
-#bottomNav button.active{color:var(--green);}
-#bottomNav button.centerBtn{
-  margin-top:-26px; background:linear-gradient(160deg,#1f5c3a,#2f8a52); color:#fff; width:54px; height:54px;
-  border-radius:50%; justify-content:center; box-shadow:0 6px 14px rgba(31,92,58,.35); flex:none;
-}
-#bottomNav button.centerBtn .ic{font-size:22px;}
+.fab-report:active{transform:scale(0.94);}
 
 .toast{
-  position:fixed; left:50%; bottom:110px; transform:translateX(-50%); background:#2b2b26; color:#fff;
-  padding:10px 18px; border-radius:999px; font-size:13px; z-index:300; opacity:0; pointer-events:none; transition:opacity .25s;
+  position:absolute; left:50%; bottom:170px; transform:translateX(-50%);
+  background:rgba(31,41,55,0.92); color:#fff; padding:10px 16px; border-radius:999px;
+  font-size:13px; z-index:40; opacity:0; pointer-events:none; transition:opacity .25s;
 }
 .toast.show{opacity:1;}
-.hidden{display:none !important;}
+
+/* ---------- Bottom nav ---------- */
+nav.bottom{
+  position:relative; z-index:20;
+  display:flex; background:var(--card);
+  border-top:1px solid var(--line);
+  padding:8px 4px calc(8px + var(--safe-bottom));
+}
+nav.bottom button{
+  flex:1; background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:3px;
+  color:var(--muted); font-size:10.5px; padding:4px 0; font-family:"Noto Sans JP", sans-serif;
+}
+nav.bottom button .ic{font-size:19px;}
+nav.bottom button.active{color:var(--blue); font-weight:700;}
+
+/* ---------- Views ---------- */
+.view{position:absolute; inset:0; background:var(--bg); overflow-y:auto; z-index:10;}
+.view.hidden{display:none;}
+.view-header{padding:16px 18px 4px;}
+.view-header h2{margin:0 0 2px; font-size:20px;}
+.view-header p{margin:0; font-size:12.5px; color:var(--muted);}
+
+/* ---------- Cards ---------- */
+.card{
+  background:var(--card); border-radius:var(--radius); margin:12px 16px; padding:16px;
+  box-shadow:0 3px 12px rgba(20,30,60,0.06);
+}
+
+/* ---------- Popup (Leaflet) content ---------- */
+.pin-popup{font-family:"Noto Sans JP", sans-serif; min-width:190px;}
+.pin-popup .badge{
+  display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px;
+  margin-bottom:6px;
+}
+.badge.ok{background:#E7F6E9; color:#2C8C3E;}
+.badge.unconf{background:#FFF3DA; color:#B8790F;}
+.badge.warn{background:#FDE7E4; color:var(--red);}
+.pin-popup h4{margin:0 0 4px; font-size:15px;}
+.pin-popup .meta{font-size:11.5px; color:var(--muted); margin-bottom:6px;}
+.pin-popup img{width:100%; border-radius:10px; margin-top:4px;}
+
+/* ---------- Report Sheet ---------- */
+.sheet-backdrop{
+  position:fixed; inset:0; background:rgba(20,30,55,0.4); z-index:50;
+  display:flex; align-items:flex-end; opacity:0; pointer-events:none; transition:opacity .25s;
+}
+.sheet-backdrop.open{opacity:1; pointer-events:auto;}
+.sheet{
+  background:var(--card); width:100%; max-height:88vh; border-radius:22px 22px 0 0;
+  padding:14px 18px calc(18px + var(--safe-bottom)); overflow-y:auto;
+  transform:translateY(100%); transition:transform .3s ease;
+}
+.sheet-backdrop.open .sheet{transform:translateY(0);}
+.sheet-handle{width:40px; height:4px; background:var(--line); border-radius:99px; margin:0 auto 12px;}
+.sheet h3{margin:0 0 4px; font-size:18px;}
+.sheet .sub{font-size:12px; color:var(--muted); margin:0 0 14px;}
+
+.tabgroup{display:flex; gap:8px; margin-bottom:14px;}
+.tabgroup button{
+  flex:1; padding:10px 0; border-radius:12px; border:1.5px solid var(--line); background:#fff;
+  font-weight:700; font-size:13.5px; color:var(--muted); font-family:"Noto Sans JP", sans-serif;
+}
+.tabgroup button.active{border-color:var(--blue); color:var(--blue); background:#EEF3FF;}
+
+.icon-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px;}
+.icon-cell{
+  border:1.5px solid var(--line); border-radius:14px; padding:12px 4px; text-align:center;
+  background:#fff; font-family:"Noto Sans JP", sans-serif;
+}
+.icon-cell .em{font-size:24px; display:block; margin-bottom:4px;}
+.icon-cell span.lb{font-size:11px; color:var(--ink);}
+.icon-cell.active{border-color:var(--teal); background:#EAF8F4;}
+
+.loc-row{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  background:#F3F6FC; border-radius:14px; padding:12px 14px; margin-bottom:14px; font-size:12.5px;
+}
+.loc-row button{
+  border:none; background:var(--blue); color:#fff; padding:8px 12px; border-radius:10px; font-size:12px; font-weight:700;
+}
+.photo-row{margin-bottom:16px;}
+.photo-row label{font-size:12.5px; color:var(--muted); display:block; margin-bottom:6px;}
+.photo-preview{
+  width:100%; height:120px; border-radius:14px; border:1.5px dashed var(--line);
+  display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12.5px;
+  background-size:cover; background-position:center; overflow:hidden; position:relative;
+}
+.photo-preview input{position:absolute; inset:0; opacity:0;}
+
+.btn-primary{
+  width:100%; padding:15px; border:none; border-radius:14px; background:var(--blue); color:#fff;
+  font-weight:700; font-size:15px; font-family:"Noto Sans JP", sans-serif;
+}
+.btn-primary:disabled{background:#B9C6E6;}
+.btn-ghost{
+  width:100%; padding:12px; border:none; background:none; color:var(--muted); font-size:13px; margin-top:6px;
+}
+
+/* ---------- Mypage ---------- */
+.profile-card{display:flex; align-items:center; gap:14px;}
+.avatar{
+  width:56px; height:56px; border-radius:50%; background:linear-gradient(135deg, var(--blue), var(--teal));
+  color:#fff; display:flex; align-items:center; justify-content:center; font-size:24px; flex:none;
+}
+.profile-name{font-weight:700; font-size:16px; margin:0;}
+.profile-sub{font-size:12px; color:var(--muted); margin:2px 0 0;}
+.stat-row{display:flex; gap:10px; margin-top:14px;}
+.stat-box{flex:1; background:#F3F6FC; border-radius:12px; padding:10px; text-align:center;}
+.stat-box b{display:block; font-size:18px; color:var(--blue);}
+.stat-box span{font-size:11px; color:var(--muted);}
+.list-row{
+  display:flex; align-items:center; justify-content:space-between; padding:13px 2px;
+  border-bottom:1px solid var(--line); font-size:14px;
+}
+.list-row:last-child{border-bottom:none;}
+.list-row .l{display:flex; align-items:center; gap:10px;}
+.soon{
+  display:flex; flex-direction:column; align-items:center; justify-content:center; height:70%;
+  color:var(--muted); text-align:center; padding:0 30px;
+}
+.soon .em{font-size:40px; margin-bottom:10px;}
 </style>
 </head>
 <body>
-<div id="appFrame">
 
-  <!-- ================= LOGIN ================= -->
-  <div id="loginScreen">
+<header>
+  <div class="brand"><span class="leaf">🌿</span>ポイ捨てゴミマップ</div>
+  <button class="header-btn" onclick="showToast('お知らせはまだありません')">🔔</button>
+</header>
+
+<div id="map-wrap">
+  <div id="map"></div>
+
+  <div class="mentor-chip" id="mentorChip">
+    <div class="face">🧑‍🔧</div>
     <div>
-      <div class="logo">まち<span>みっけ</span> 🔍</div>
-      <div class="badge">伊勢市限定版</div>
+      <p id="mentorText">この町をきれいにするのはみんなの力や。見つけたゴミはどんどん教えてくれよな！</p>
     </div>
-    <p class="tagline">歩いて、走って、見つけよう。<br>まちで見つけたものを写真で記録。<br>種類をえらんで、みんなの図鑑になります。</p>
-    <div class="authBtns">
-      <button class="btn btn-google" id="googleLoginBtn">
-        <span>🔎</span> Googleでログイン
-      </button>
-      <button class="btn btn-apple" id="appleLoginBtn">
-        <span>🍎</span> Appleでログイン
-      </button>
-      <button class="btn btn-guest" id="guestLoginBtn">ゲストで始める</button>
-    </div>
+    <button class="close" onclick="document.getElementById('mentorChip').style.display='none'">✕</button>
   </div>
 
-  <!-- ================= TOPBAR ================= -->
-  <div class="topbar">
-    <h1 id="topbarTitle">まちみっけ</h1>
-    <button class="iconbtn" id="logoutBtn" title="ログアウト" aria-label="ログアウト">🚪</button>
-  </div>
-
-  <!-- ================= HOME ================= -->
-  <section class="screen active" id="screen-home">
-    <div class="home-hero">
-      <div class="logo">まち<span>みっけ</span> 🔍</div>
-      <div class="badge">伊勢市限定版</div>
-      <p>歩いて、走って、見つけよう。<br>みんなでつくる、伊勢の図鑑。</p>
-      <button class="discoverBtn" data-nav="discover">📷 発見する</button>
-    </div>
-
-    <div class="quicknav">
-      <button data-nav="map"><span class="ic">🗺️</span>マップ</button>
-      <button data-nav="ranking"><span class="ic">🏆</span>ランキング</button>
-      <button data-nav="mypage"><span class="ic">👤</span>マイページ</button>
-    </div>
-
-    <div class="section-title">あなたの記録</div>
-    <div class="statsRow">
-      <div class="statCard"><div class="num" id="homeStatFinds">0</div><div class="lbl">発見数</div></div>
-      <div class="statCard"><div class="num" id="homeStatSpecies">0</div><div class="lbl">図鑑登録数</div></div>
-      <div class="statCard"><div class="num" id="homeStatDist">0<small style="font-size:11px;">km</small></div><div class="lbl">調査距離</div></div>
-    </div>
-
-    <div class="section-title">いろいろな図鑑</div>
-    <div class="zukanGrid" id="zukanGrid"></div>
-  </section>
-
-  <!-- ================= 図鑑 (list) ================= -->
-  <section class="screen" id="screen-zukan">
-    <div class="section-title" style="margin-top:14px;">図鑑一覧</div>
-    <div class="zukanGrid" id="zukanGrid2" style="margin-bottom:18px;"></div>
-    <div class="section-title">最近の発見</div>
-    <div id="recentList" style="margin:0 18px;"></div>
-  </section>
-
-  <!-- ================= 発見 (camera) ================= -->
-  <section class="screen" id="screen-discover">
-    <!-- STEP 1: 写真を撮る／アルバムから選ぶ -->
-    <div id="captureStage">
-      <div class="cameraStage">
-        <div class="cameraBox">
-          <div class="ic">📷</div>
-          <p id="captureHint">見つけたものを撮影してください</p>
-          <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-            <label class="btn btn-primary" style="display:inline-flex;" for="photoInputCamera">📷 写真を撮る</label>
-            <label class="btn btn-outline" style="display:inline-flex;" for="photoInputAlbum">🖼️ アルバムから選択</label>
-          </div>
-          <input type="file" id="photoInputCamera" accept="image/*" capture="environment">
-          <input type="file" id="photoInputAlbum" accept="image/*">
-        </div>
-      </div>
-    </div>
-
-    <!-- STEP 2: 地図で場所を確認・ピン打ち（現在地 or 手動） -->
-    <div id="pinStage" class="hidden">
-      <div class="previewCard">
-        <img id="previewImg" src="" alt="撮影した写真">
-        <div class="resultBox">
-          <div style="font-size:12px; color:var(--gray); font-weight:700; margin-bottom:8px;">登録する場所を確認してください（ピンはドラッグで動かせます）</div>
-          <div id="pinMap"></div>
-          <div id="pinStatus" style="font-size:12px; color:var(--gray); margin:10px 0 14px;">現在地を取得中…</div>
-          <div class="resultBtns">
-            <button class="btn btn-outline" id="retryPinBtn">📍 現在地を取得し直す</button>
-            <button class="btn btn-primary" id="toTypeBtn" disabled>この場所で確定する ›</button>
-            <button class="btn btn-outline" id="retakeBtn">‹ 撮り直す</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- STEP 3: ゴミの種類を選んで登録 -->
-    <div id="typeStage" class="hidden">
-      <div class="section-title" style="margin-top:14px;">なにを見つけましたか？</div>
-      <div class="typeGrid" id="typeGrid" style="margin:0 18px 18px;"></div>
-      <div style="margin:0 18px;">
-        <button class="btn btn-outline" id="backToPinBtn" style="width:100%;">‹ 場所を選び直す</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- ================= 発見マップ ================= -->
-  <section class="screen" id="screen-map">
-    <div class="filterRow" id="mapFilterRow"></div>
-    <div class="mapWrap">
-      <div id="leafletMap"></div>
-      <div class="mapTypeCtrl" id="mapTypeCtrl">
-        <button data-type="normal" class="active">通常</button>
-        <button data-type="gray">グレー</button>
-        <button data-type="satellite">衛星</button>
-      </div>
-    </div>
-    <div class="areaStats" id="areaStats"></div>
-  </section>
-
-  <!-- ================= マイページ ================= -->
-  <section class="screen" id="screen-mypage">
-    <div class="profileCard">
-      <div class="avatar">🧑</div>
-      <div>
-        <div class="name" id="myName">伊勢の探検家</div>
-        <div class="lv" id="myLevel">Lv.1 さんぽビギナー</div>
-      </div>
-    </div>
-    <div class="mypageStats">
-      <div class="statCard"><div class="num" id="myStatFinds">0</div><div class="lbl">発見数</div></div>
-      <div class="statCard"><div class="num" id="myStatSpecies">0</div><div class="lbl">図鑑登録数</div></div>
-      <div class="statCard"><div class="num" id="myStatDist">0<small style="font-size:11px;">km</small></div><div class="lbl">調査距離</div></div>
-    </div>
-    <div class="menuList">
-      <button data-nav="zukan"><span class="left">📔 自分の記録</span><span>›</span></button>
-      <button><span class="left">⭐ お気に入り</span><span>›</span></button>
-      <button><span class="left">🏅 バッジコレクション</span><span class="badgeNum" id="badgeCount">0</span></button>
-      <button><span class="left">🎯 ミッション</span><span>›</span></button>
-      <button><span class="left">⚙️ 設定</span><span>›</span></button>
-    </div>
-  </section>
-
-  <!-- ================= ランキング ================= -->
-  <section class="screen" id="screen-ranking">
-    <div class="section-title" style="margin-top:14px;">町別ランキング</div>
-    <div class="rankTabs">
-      <button class="active" data-rank="finds">発見数</button>
-      <button data-rank="species">図鑑登録数</button>
-      <button data-rank="likes">いいね！数</button>
-    </div>
-    <div class="periodTabs">
-      <button data-period="week">今週</button>
-      <button class="active" data-period="month">今月</button>
-      <button data-period="all">累計</button>
-    </div>
-    <div class="rankList" id="rankList"></div>
-  </section>
-
-  <!-- ================= BOTTOM NAV ================= -->
-  <nav id="bottomNav">
-    <button data-nav="home" class="active"><span class="ic">🏠</span>ホーム</button>
-    <button data-nav="zukan"><span class="ic">📔</span>図鑑</button>
-    <button data-nav="discover" class="centerBtn"><span class="ic">📷</span></button>
-    <button data-nav="map"><span class="ic">🗺️</span>マップ</button>
-    <button data-nav="mypage"><span class="ic">👤</span>マイページ</button>
-  </nav>
-
+  <button class="fab-report" onclick="openSheet()">＋</button>
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script type="module">
-/* =========================================================================
-   まちみっけ｜伊勢市限定版 — app logic
-   Firebase (Auth + Firestore) + Leaflet GPS map + manual type/species selection (no AI).
+<!-- マイページ ビュー -->
+<div class="view hidden" id="view-mypage">
+  <div class="view-header"><h2>マイページ</h2><p>自分の記録やポイントを確認</p></div>
 
-   >>> SETUP: fill in your own Firebase project config below <<<
-   ========================================================================= */
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import {
-  getAuth, GoogleAuthProvider, OAuthProvider, signInWithPopup, signInAnonymously,
-  onAuthStateChanged, signOut
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import {
-  getFirestore, collection, addDoc, query, orderBy, limit, onSnapshot,
-  serverTimestamp, doc, setDoc, getDoc, increment
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  <div class="card profile-card">
+    <div class="avatar" id="avatarInitial">👤</div>
+    <div>
+      <p class="profile-name" id="profileName">ゲストユーザー</p>
+      <p class="profile-sub" id="profileSub">ログインすると記録が消えません</p>
+    </div>
+  </div>
 
-// TODO: replace with your own Firebase project settings (see console.firebase.google.com)
+  <div class="card">
+    <div class="stat-row">
+      <div class="stat-box"><b id="statCount">0</b><span>調査件数</span></div>
+      <div class="stat-box"><b id="statPoints">0</b><span>ポイント</span></div>
+      <div class="stat-box"><b id="statBadges">0</b><span>バッジ</span></div>
+    </div>
+  </div>
+
+  <div class="card" id="authCard">
+    <div class="list-row" onclick="signInGoogle()">
+      <div class="l">🔑 <span>Googleでログイン</span></div><span>›</span>
+    </div>
+    <div class="list-row" onclick="showToast('近日公開予定です')">
+      <div class="l">📖 <span>調査履歴</span></div><span>›</span>
+    </div>
+    <div class="list-row" onclick="showToast('近日公開予定です')">
+      <div class="l">⚙️ <span>設定</span></div><span>›</span>
+    </div>
+  </div>
+</div>
+
+<!-- 近日公開 ビュー(ランキング・タイムライン共通) -->
+<div class="view hidden" id="view-soon">
+  <div class="soon">
+    <div class="em">🚧</div>
+    <h3 style="margin:0 0 6px;">この機能は準備中です</h3>
+    <p style="font-size:13px; margin:0;">データが集まり次第、フェーズ2で公開予定やで。もうしばらく待っててな。</p>
+  </div>
+</div>
+
+<nav class="bottom">
+  <button class="nav-btn active" data-view="map"><span class="ic">🏠</span>ホーム</button>
+  <button class="nav-btn" data-view="soon"><span class="ic">📈</span>タイムライン</button>
+  <button class="nav-btn" data-view="soon"><span class="ic">🏆</span>ランキング</button>
+  <button class="nav-btn" data-view="mypage"><span class="ic">🙋</span>マイページ</button>
+</nav>
+
+<!-- 報告シート -->
+<div class="sheet-backdrop" id="sheetBackdrop">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h3>ゴミを報告する</h3>
+    <p class="sub">見つけたゴミをタップで記録しよう</p>
+
+    <div class="tabgroup" id="catTabs">
+      <button class="active" data-cat="ポイ捨て" onclick="selectCategory('ポイ捨て')">ポイ捨て</button>
+      <button data-cat="海ごみ" onclick="selectCategory('海ごみ')">海ごみ</button>
+    </div>
+
+    <div class="icon-grid" id="iconGrid"></div>
+
+    <div class="loc-row">
+      <span id="locText">位置情報が未取得です</span>
+      <button onclick="captureLocation()">現在地を取得</button>
+    </div>
+
+    <div class="photo-row">
+      <label>写真を追加（任意）</label>
+      <div class="photo-preview" id="photoPreview">
+        タップして撮影・選択
+        <input type="file" accept="image/*" capture="environment" id="photoInput" onchange="onPhotoSelected(event)">
+      </div>
+    </div>
+
+    <button class="btn-primary" id="submitBtn" onclick="submitReport()" disabled>投稿する</button>
+    <button class="btn-ghost" onclick="closeSheet()">キャンセル</button>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   Firebase 初期化
+   ↓ 既存の poisute-map-ise プロジェクトの設定値に置き換えてください
+========================================================= */
 const firebaseConfig = {
-  apiKey: "AIzaSyAPoFjQ4RTIYByTuu35J93kwlLfYBEkpKY",
-  authDomain: "machimikke.firebaseapp.com",
-  projectId: "machimikke",
-  storageBucket: "machimikke.firebasestorage.app",
-  messagingSenderId: "497845237336",
-  appId: "1:497845237336:web:a39e12428d2943fdf43c2d"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+const storage = firebase.storage();
 
-let fbApp, auth, db, currentUser = null;
-try {
-  fbApp = initializeApp(firebaseConfig);
-  auth = getAuth(fbApp);
-  db = getFirestore(fbApp);
-} catch (e) {
-  console.warn("Firebase init skipped (config not set yet):", e.message);
-}
-
-/* ---------------- Categories (図鑑) ----------------
-   花・野鳥・昆虫・樹木の自然図鑑とAI/Google検索による識別は廃止し、
-   ポイ捨てゴミ（陸）と海ゴミ（海岸）の2つに絞ったゴミ調査アプリに切り替え。 */
-const CATEGORIES = [
-  { id: "poi",     name: "ポイ捨て図鑑", emoji: "🗑️", color: "#f2a33c" },
-  { id: "umigomi", name: "海ごみ図鑑",   emoji: "🌊", color: "#4a90d9" },
-  { id: "other",   name: "その他いろいろ", emoji: "🔍", color: "#8a8a82" },
-];
-
-/* ---------------- ゴミの種類（アイコンボタンで選択） ----------------
-   写真によるAI自動判定・Google検索での識別は廃止。
-   陸・海どちらでも共通で使う種類一覧をアイコンボタンにし、
-   ユーザー自身がタップして選ぶ方式にする（表記ゆれ・誤登録の防止）。 */
-const TRASH_TYPES = [
-  { id: "pet",       name: "ペットボトル",       emoji: "🧴" },
-  { id: "plastic",   name: "プラスチック",       emoji: "🧩" },
-  { id: "vinyl",     name: "ビニール類",         emoji: "🛍️" },
-  { id: "styrofoam", name: "発泡スチロール",     emoji: "▫️" },
-  { id: "cigarette", name: "タバコ",             emoji: "🚬" },
-  { id: "lighter",   name: "ライター",           emoji: "🔥" },
-  { id: "paper",     name: "紙類",               emoji: "📄" },
-  { id: "cardboard", name: "段ボール",           emoji: "📦" },
-  { id: "can",       name: "缶",                 emoji: "🥫" },
-  { id: "bottle",    name: "ビン",               emoji: "🍾" },
-  { id: "metal",     name: "金属類",             emoji: "🔩" },
-  { id: "fishgear",  name: "漁具（竿・リール）", emoji: "🎣" },
-  { id: "lure",      name: "ルアー",             emoji: "🐟" },
-  { id: "float",     name: "浮き",               emoji: "🔴" },
-  { id: "net",       name: "網",                 emoji: "🕸️" },
-  { id: "rope",      name: "ロープ",             emoji: "🪢" },
-  { id: "floater",   name: "フロート",           emoji: "🧊" },
-  { id: "other",     name: "その他",             emoji: "❔" },
-];
-/* ---------------- 種類 → 図鑑カテゴリの自動判定 ----------------
-   発見ページの手動トグル（ポイ捨て／海ごみボタン）は廃止したため、
-   選んだゴミの種類から自動でカテゴリ（poi/umigomi/other）を割り当てる。 */
-const TYPE_TO_CATEGORY = {
-  pet: "poi", plastic: "poi", vinyl: "poi", styrofoam: "poi", cigarette: "poi", lighter: "poi",
-  paper: "poi", cardboard: "poi", can: "poi", bottle: "poi", metal: "poi",
-  fishgear: "umigomi", lure: "umigomi", float: "umigomi", net: "umigomi", rope: "umigomi", floater: "umigomi",
-  other: "other",
-};
-
-
-/* ---------------- 伊勢市 全町名リスト（50音順） ----------------
-   伊勢市公式「町別人口・世帯数統計表」（令和8年5月現在）に基づき、
-   丁目のある町は丁目単位で作成。読み（yomi）は並び替え用。 */
-const TOWNS = [
-  // ア行
-  { name: "旭町", yomi: "アサヒチョウ" },
-  { name: "朝熊町", yomi: "アサマチョウ" },
-  { name: "有滝町", yomi: "アリタキチョウ" },
-  { name: "粟野町", yomi: "アワノチョウ" },
-  { name: "磯町", yomi: "イソチョウ" },
-  { name: "一宇田町", yomi: "イチウダチョウ" },
-  { name: "一志町", yomi: "イチシチョウ" },
-  { name: "一之木1丁目", yomi: "イチノキ1" },
-  { name: "一之木2丁目", yomi: "イチノキ2" },
-  { name: "一之木3丁目", yomi: "イチノキ3" },
-  { name: "一之木4丁目", yomi: "イチノキ4" },
-  { name: "一之木5丁目", yomi: "イチノキ5" },
-  { name: "一色町", yomi: "イッシキチョウ" },
-  { name: "岩渕1丁目", yomi: "イワブチ1" },
-  { name: "岩渕2丁目", yomi: "イワブチ2" },
-  { name: "岩渕3丁目", yomi: "イワブチ3" },
-  { name: "上地町", yomi: "ウエジチョウ" },
-  { name: "上野町", yomi: "ウエノチョウ" },
-  { name: "植山町", yomi: "ウエヤマチョウ" },
-  { name: "宇治今在家町", yomi: "ウジイマザイケチョウ" },
-  { name: "宇治浦田1丁目", yomi: "ウジウラタ1" },
-  { name: "宇治浦田2丁目", yomi: "ウジウラタ2" },
-  { name: "宇治浦田3丁目", yomi: "ウジウラタ3" },
-  { name: "宇治館町", yomi: "ウジタチチョウ" },
-  { name: "宇治中之切町", yomi: "ウジナカノキリチョウ" },
-  { name: "浦口1丁目", yomi: "ウラグチ1" },
-  { name: "浦口2丁目", yomi: "ウラグチ2" },
-  { name: "浦口3丁目", yomi: "ウラグチ3" },
-  { name: "浦口4丁目", yomi: "ウラグチ4" },
-  { name: "円座町", yomi: "エンザチョウ" },
-  { name: "大倉町", yomi: "オオクラチョウ" },
-  { name: "大世古1丁目", yomi: "オオゼコ1" },
-  { name: "大世古2丁目", yomi: "オオゼコ2" },
-  { name: "大世古3丁目", yomi: "オオゼコ3" },
-  { name: "大世古4丁目", yomi: "オオゼコ4" },
-  { name: "大湊町", yomi: "オオミナトチョウ" },
-  { name: "岡本1丁目", yomi: "オカモト1" },
-  { name: "岡本2丁目", yomi: "オカモト2" },
-  { name: "岡本3丁目", yomi: "オカモト3" },
-  { name: "尾上町", yomi: "オノエチョウ" },
-  { name: "小俣町明野", yomi: "オバタチョウアケノ" },
-  { name: "小俣町新村", yomi: "オバタチョウシムラ" },
-  { name: "小俣町新村一ノ岡", yomi: "オバタチョウシムライチノオカ" },
-  { name: "小俣町新村百町", yomi: "オバタチョウシムラヒャクチョウ" },
-  { name: "小俣町新村石川", yomi: "オバタチョウシムライシカワ" },
-  { name: "小俣町相合", yomi: "オバタチョウソウゴウ" },
-  { name: "小俣町本町", yomi: "オバタチョウホンマチ" },
-  { name: "小俣町宮前", yomi: "オバタチョウミヤマエ" },
-  { name: "小俣町元町", yomi: "オバタチョウモトマチ" },
-  { name: "小俣町湯田", yomi: "オバタチョウユタ" },
-  // カ行
-  { name: "柏町", yomi: "カシワチョウ" },
-  { name: "樫原町", yomi: "カシワラチョウ" },
-  { name: "鹿海町", yomi: "カノミチョウ" },
-  { name: "神薗町", yomi: "カミソノチョウ" },
-  { name: "神社港", yomi: "カミヤシロコウ" },
-  { name: "河崎1丁目", yomi: "カワサキ1" },
-  { name: "河崎2丁目", yomi: "カワサキ2" },
-  { name: "河崎3丁目", yomi: "カワサキ3" },
-  { name: "川端町", yomi: "カワバタチョウ" },
-  { name: "楠部町", yomi: "クスベチョウ" },
-  { name: "久世戸町", yomi: "クセドチョウ" },
-  { name: "黒瀬町", yomi: "クロセチョウ" },
-  { name: "小木町", yomi: "コウギチョウ" },
-  { name: "神田久志本町", yomi: "コウダクシモトチョウ" },
-  // サ行
-  { name: "桜木町", yomi: "サクラギチョウ" },
-  { name: "下野町", yomi: "シモノチョウ" },
-  { name: "神久1丁目", yomi: "ジンキュウ1" },
-  { name: "神久2丁目", yomi: "ジンキュウ2" },
-  { name: "神久3丁目", yomi: "ジンキュウ3" },
-  { name: "神久4丁目", yomi: "ジンキュウ4" },
-  { name: "神久5丁目", yomi: "ジンキュウ5" },
-  { name: "神久6丁目", yomi: "ジンキュウ6" },
-  { name: "勢田町", yomi: "セイタチョウ" },
-  { name: "佐八町", yomi: "ソウチチョウ" },
-  { name: "曽祢1丁目", yomi: "ソネ1" },
-  { name: "曽祢2丁目", yomi: "ソネ2" },
-  // タ行
-  { name: "竹ケ鼻町", yomi: "タケガハナチョウ" },
-  { name: "田尻町", yomi: "タジリチョウ" },
-  { name: "辻久留1丁目", yomi: "ツジクル1" },
-  { name: "辻久留2丁目", yomi: "ツジクル2" },
-  { name: "辻久留3丁目", yomi: "ツジクル3" },
-  { name: "辻久留町", yomi: "ツジクルチョウ" },
-  { name: "津村町", yomi: "ツムラチョウ" },
-  { name: "通町", yomi: "トオリチョウ" },
-  { name: "常磐1丁目", yomi: "トキワ1" },
-  { name: "常磐2丁目", yomi: "トキワ2" },
-  { name: "常磐3丁目", yomi: "トキワ3" },
-  { name: "常磐町", yomi: "トキワチョウ" },
-  { name: "豊川町", yomi: "トヨカワチョウ" },
-  // ナ行
-  { name: "中島1丁目", yomi: "ナカジマ1" },
-  { name: "中島2丁目", yomi: "ナカジマ2" },
-  { name: "中須町", yomi: "ナカズチョウ" },
-  { name: "中之町", yomi: "ナカノチョウ" },
-  { name: "中村町", yomi: "ナカムラチョウ" },
-  { name: "中村町桜が丘", yomi: "ナカムラチョウサクラガオカ" },
-  { name: "西豊浜町", yomi: "ニシトヨハマチョウ" },
-  { name: "野村町", yomi: "ノムラチョウ" },
-  // ハ行
-  { name: "東大淀町", yomi: "ヒガシオイズチョウ" },
-  { name: "東豊浜町", yomi: "ヒガシトヨハマチョウ" },
-  { name: "吹上1丁目", yomi: "フキアゲ1" },
-  { name: "吹上2丁目", yomi: "フキアゲ2" },
-  { name: "藤里町", yomi: "フジサトチョウ" },
-  { name: "二俣1丁目", yomi: "フタマタ1" },
-  { name: "二俣2丁目", yomi: "フタマタ2" },
-  { name: "二俣3丁目", yomi: "フタマタ3" },
-  { name: "二俣4丁目", yomi: "フタマタ4" },
-  { name: "二俣町", yomi: "フタマタチョウ" },
-  { name: "二見町今一色", yomi: "フタミチョウイマイシキ" },
-  { name: "二見町江", yomi: "フタミチョウエ" },
-  { name: "二見町荘", yomi: "フタミチョウショウ" },
-  { name: "二見町茶屋", yomi: "フタミチョウチャヤ" },
-  { name: "二見町西", yomi: "フタミチョウニシ" },
-  { name: "二見町光の街", yomi: "フタミチョウヒカリノマチ" },
-  { name: "二見町松下", yomi: "フタミチョウマツシタ" },
-  { name: "二見町溝口", yomi: "フタミチョウミゾグチ" },
-  { name: "二見町三津", yomi: "フタミチョウミツ" },
-  { name: "二見町山田原", yomi: "フタミチョウヤマダハラ" },
-  { name: "船江1丁目", yomi: "フナエ1" },
-  { name: "船江2丁目", yomi: "フナエ2" },
-  { name: "船江3丁目", yomi: "フナエ3" },
-  { name: "船江4丁目", yomi: "フナエ4" },
-  { name: "古市町", yomi: "フルイチチョウ" },
-  { name: "本町", yomi: "ホンマチ" },
-  // マ行
-  { name: "前山町", yomi: "マエヤマチョウ" },
-  { name: "馬瀬町", yomi: "マゼチョウ" },
-  { name: "御薗町王中島", yomi: "ミソノチョウオウナカジマ" },
-  { name: "御薗町小林", yomi: "ミソノチョウオハヤシ" },
-  { name: "御薗町上條", yomi: "ミソノチョウカミジョウ" },
-  { name: "御薗町新開", yomi: "ミソノチョウシンガイ" },
-  { name: "御薗町高向", yomi: "ミソノチョウタカブク" },
-  { name: "御薗町長屋", yomi: "ミソノチョウナガヤ" },
-  { name: "宮川1丁目", yomi: "ミヤガワ1" },
-  { name: "宮川2丁目", yomi: "ミヤガワ2" },
-  { name: "宮後1丁目", yomi: "ミヤジリ1" },
-  { name: "宮後2丁目", yomi: "ミヤジリ2" },
-  { name: "宮後3丁目", yomi: "ミヤジリ3" },
-  { name: "宮町1丁目", yomi: "ミヤマチ1" },
-  { name: "宮町2丁目", yomi: "ミヤマチ2" },
-  { name: "村松町", yomi: "ムラマツチョウ" },
-  // ヤ行
-  { name: "矢持町上村", yomi: "ヤモチカミムラ" },
-  { name: "矢持町下村", yomi: "ヤモチシモムラ" },
-  { name: "矢持町菖蒲", yomi: "ヤモチショウブ" },
-  { name: "矢持町床木", yomi: "ヤモチトコギ" },
-  { name: "八日市場町", yomi: "ヨウカイチバチョウ" },
-  { name: "横輪町", yomi: "ヨコワチョウ" },
-  // ラ行・ワ行
-  { name: "倭町", yomi: "ワチョウ" },
-];
-
-/* ---------------- Ranking data ----------------
-   まだ誰も登録していないので、全町0件からの一斉スタート。
-   { finds: {"町名": 件数, ...}, species: {...}, likes: {...} }
-   実際の発見が登録され次第、Firestoreの集計結果でここを埋めるように差し替える。 */
-const RANKING_DATA = { finds: {}, species: {}, likes: {} };
-
-// 件数（降順）→ 同数の場合は町名の50音順、で並べたランキング配列を作る
-function buildRankingList(type) {
-  const counts = RANKING_DATA[type] || {};
-  return TOWNS
-    .map(t => ({ name: t.name, yomi: t.yomi, count: counts[t.name] || 0 }))
-    .sort((a, b) => b.count - a.count || a.yomi.localeCompare(b.yomi, "ja"));
-}
-
-/* ============================= Navigation ============================= */
-const screens = ["home", "zukan", "discover", "map", "mypage", "ranking"];
-function showScreen(name) {
-  screens.forEach(s => document.getElementById("screen-" + s).classList.toggle("active", s === name));
-  document.querySelectorAll("#bottomNav button[data-nav]").forEach(b =>
-    b.classList.toggle("active", b.dataset.nav === name)
-  );
-  document.getElementById("topbarTitle").textContent =
-    name === "home" ? "まちみっけ" :
-    name === "zukan" ? "図鑑" :
-    name === "discover" ? "発見する" :
-    name === "map" ? "発見マップ" :
-    name === "mypage" ? "マイページ" : "町別ランキング";
-  if (name === "map") {
-    // 画面切り替えアニメーション（.18s）が終わってから初期化・再計算することで、
-    // タイルの一部が読み込まれず消えて見えるバグを防ぐ
-    setTimeout(() => {
-      initMapIfNeeded();
-      requestAnimationFrame(() => leafletMap && leafletMap.invalidateSize());
-    }, 200);
-  }
-  if (name === "discover") resetCaptureStage();
-}
-document.querySelectorAll("[data-nav]").forEach(el =>
-  el.addEventListener("click", () => showScreen(el.dataset.nav))
-);
-
-/* ============================= Toast ============================= */
-function toast(msg) {
-  const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 4000);
-}
-
-/* ============================= Auth ============================= */
-document.getElementById("googleLoginBtn").addEventListener("click", async () => {
-  if (!auth) return toast("Firebase未設定です");
-  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
-  catch (e) { toast("エラー: " + (e.code || e.message)); console.error(e); }
-});
-document.getElementById("appleLoginBtn").addEventListener("click", async () => {
-  if (!auth) return toast("Firebase未設定です");
-  try {
-    const provider = new OAuthProvider("apple.com");
-    provider.addScope("email");
-    provider.addScope("name");
-    await signInWithPopup(auth, provider);
-  } catch (e) { toast("エラー: " + (e.code || e.message)); console.error(e); }
-});
-document.getElementById("guestLoginBtn").addEventListener("click", async () => {
-  if (!auth) return toast("Firebase未設定です");
-  try { await signInAnonymously(auth); }
-  catch (e) { toast("エラー: " + (e.code || e.message)); console.error(e); }
-});
-document.getElementById("logoutBtn").addEventListener("click", async () => {
-  if (!auth) { setLoggedIn(false); toast("ログアウトしました（デモ）"); return; }
-  await signOut(auth);
-});
-
-function setLoggedIn(isIn) {
-  document.getElementById("loginScreen").classList.toggle("hidden", isIn);
-}
-
-if (auth) {
-  onAuthStateChanged(auth, async (user) => {
+let currentUser = null;
+auth.onAuthStateChanged(user => {
+  if (user) {
     currentUser = user;
-    setLoggedIn(!!user);
-    if (user) {
-      await ensureUserProfile(user);
-      loadUserStats(user);
-    }
-  });
-} else {
-  // No Firebase config yet — allow browsing the UI anyway.
-  setLoggedIn(true);
+    renderProfile(user);
+    loadMyStats(user.uid);
+  } else {
+    auth.signInAnonymously().catch(err => console.error("匿名ログイン失敗:", err));
+  }
+});
+
+function renderProfile(user){
+  const isAnon = user.isAnonymous;
+  document.getElementById('profileName').textContent = isAnon ? "ゲストユーザー" : (user.displayName || "親方ファン");
+  document.getElementById('profileSub').textContent = isAnon ? "ログインすると記録が消えません" : user.email || "";
+  document.getElementById('avatarInitial').textContent = isAnon ? "👤" : "🧑";
 }
 
-async function ensureUserProfile(user) {
-  const ref = doc(db, "users", user.uid);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) {
-    await setDoc(ref, {
-      displayName: user.displayName || "伊勢の探検家",
-      finds: 0, species: 0, distanceKm: 0, badges: 0,
-      createdAt: serverTimestamp(),
-    });
+function signInGoogle(){
+  const provider = new firebase.auth.GoogleAuthProvider();
+  if (currentUser && currentUser.isAnonymous){
+    currentUser.linkWithPopup(provider)
+      .then(res => { renderProfile(res.user); showToast('ログインしました'); })
+      .catch(err => {
+        if (err.code === 'auth/credential-already-in-use'){
+          firebase.auth().signInWithPopup(provider);
+        } else {
+          console.error(err); showToast('ログインに失敗しました');
+        }
+      });
+  } else {
+    auth.signInWithPopup(provider);
   }
 }
 
-function loadUserStats(user) {
-  const ref = doc(db, "users", user.uid);
-  onSnapshot(ref, (snap) => {
-    if (!snap.exists()) return;
-    const d = snap.data();
-    document.getElementById("myName").textContent = d.displayName || "伊勢の探検家";
-    const lv = Math.max(1, Math.floor((d.finds || 0) / 20) + 1);
-    document.getElementById("myLevel").textContent = `Lv.${lv} さんぽマスター`;
-    ["homeStatFinds", "myStatFinds"].forEach(id => document.getElementById(id).textContent = d.finds || 0);
-    ["homeStatSpecies", "myStatSpecies"].forEach(id => document.getElementById(id).textContent = d.species || 0);
-    ["homeStatDist", "myStatDist"].forEach(id => document.getElementById(id).firstChild.textContent = (d.distanceKm || 0).toFixed(1));
-    document.getElementById("badgeCount").textContent = d.badges || 0;
-  });
+function loadMyStats(uid){
+  db.collection('reports').where('reportedBy','==',uid).get().then(snap => {
+    const count = snap.size;
+    document.getElementById('statCount').textContent = count;
+    document.getElementById('statPoints').textContent = count * 10;
+    document.getElementById('statBadges').textContent = Math.floor(count / 10);
+  }).catch(err => console.error(err));
 }
 
-/* ============================= 図鑑 grid ============================= */
-function renderZukanGrid(el) {
-  el.innerHTML = "";
-  CATEGORIES.forEach(c => {
-    const item = document.createElement("div");
-    item.className = "zukanItem";
-    item.innerHTML = `<div class="circle" style="background:${c.color}22; color:${c.color};">${c.emoji}</div><div class="lbl">${c.name}</div>`;
-    el.appendChild(item);
-  });
-}
-renderZukanGrid(document.getElementById("zukanGrid"));
-renderZukanGrid(document.getElementById("zukanGrid2"));
+/* =========================================================
+   地図（国土地理院タイル：通常⇔写真 / 完全無料）
+========================================================= */
+const map = L.map('map', { zoomControl:false }).setView([34.4859, 136.7093], 14);
 
-/* ============================= Capture flow (manual selection, no AI) ============================= */
-let pendingPhotoDataUrl = null;
-let pendingCategory = "poi"; // 選んだゴミの種類から TYPE_TO_CATEGORY で自動的に決まる
-let pendingSelection = null; // { id, name, en, emoji }
-let pendingLat = null;
-let pendingLng = null;
+const stdLayer = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {
+  attribution: '地図: 国土地理院', maxZoom: 18
+}).addTo(map);
 
-function renderTypeGrid() {
-  const grid = document.getElementById("typeGrid");
-  grid.innerHTML = TRASH_TYPES.map(t => `
-    <button class="typeBtn" data-id="${t.id}"><span class="ic">${t.emoji}</span><span>${t.name}</span></button>
-  `).join("");
-  grid.querySelectorAll(".typeBtn").forEach(btn => btn.addEventListener("click", () => {
-    const t = TRASH_TYPES.find(x => x.id === btn.dataset.id);
-    selectType(t);
-  }));
-}
-
-function selectType(t) {
-  // ゴミの種類はフロー最後のステップ。選んだ時点で写真・位置・種類がそろうので、そのまま登録する。
-  pendingSelection = { id: t.id, name: t.name, en: "", emoji: t.emoji };
-  pendingCategory = TYPE_TO_CATEGORY[t.id] || "other";
-  if (!db || !currentUser) { toast("この内容で登録しました（デモ）"); resetCaptureStage(); showScreen("home"); return; }
-  saveDiscovery(pendingLat, pendingLng);
-}
-
-document.getElementById("backToPinBtn").addEventListener("click", () => {
-  document.getElementById("typeStage").classList.add("hidden");
-  document.getElementById("pinStage").classList.remove("hidden");
+const photoLayer = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
+  attribution: '写真: 国土地理院', maxZoom: 18
 });
 
-function resetCaptureStage() {
-  pendingSelection = null;
-  pendingPhotoDataUrl = null;
-  pendingLat = null;
-  pendingLng = null;
-  document.getElementById("captureStage").classList.remove("hidden");
-  document.getElementById("pinStage").classList.add("hidden");
-  document.getElementById("typeStage").classList.add("hidden");
-  document.getElementById("photoInputCamera").value = "";
-  document.getElementById("photoInputAlbum").value = "";
-  renderTypeGrid();
-}
-resetCaptureStage(); // 発見ページを開いたら、まず写真選択（撮影／アルバム）が見える状態にしておく
+L.control.layers({ '通常地図': stdLayer, '写真（衛星）': photoLayer }, null, { position:'topright' }).addTo(map);
+L.control.zoom({ position:'bottomright' }).addTo(map);
 
-/* ---------------- 撮影 → 位置ピン確認 ---------------- */
-/* Firestoreは1ドキュメントあたり最大1MBまでという制限があり、
-   カメラで撮影したそのままの写真（数MB）を base64 で保存しようとすると
-   登録に失敗する（バグの原因）。事前にリサイズ＆圧縮してから保存する。 */
-function compressImage(file, maxDim = 1280, quality = 0.72) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          if (width >= height) {
-            height = Math.round(height * (maxDim / width));
-            width = maxDim;
-          } else {
-            width = Math.round(width * (maxDim / height));
-            height = maxDim;
-          }
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-      img.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
-      img.src = reader.result;
-    };
-    reader.onerror = () => reject(new Error("ファイルの読み込みに失敗しました"));
-    reader.readAsDataURL(file);
+let heatLayer = null;
+let markersLayer = L.layerGroup().addTo(map);
+
+const CONFIDENCE_LABEL = {
+  '確認済み': { cls:'ok', txt:'確認済み' },
+  '未確認':   { cls:'unconf', txt:'未確認' },
+  '要注意':   { cls:'warn', txt:'要注意（AIが不自然と判断）' }
+};
+
+function categoryColor(cat){ return cat === '海ごみ' ? '#2c8879' : '#2F6FED'; }
+
+function buildDivIcon(item){
+  const color = categoryColor(item.category);
+  return L.divIcon({
+    className:'',
+    html:`<div style="width:32px;height:32px;border-radius:50% 50% 50% 0;background:${color};transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.25);">
+            <span style="transform:rotate(45deg);font-size:15px;">${item.emoji || '🗑️'}</span>
+          </div>`,
+    iconSize:[32,32], iconAnchor:[16,30]
   });
 }
 
-async function handlePhotoSelected(e) {
+function renderPopup(d){
+  const conf = CONFIDENCE_LABEL[d.confidence] || CONFIDENCE_LABEL['未確認'];
+  const date = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleString('ja-JP') : '';
+  const photo = (d.photos && d.photos[0]) ? `<img src="${d.photos[0]}">` : '';
+  return `<div class="pin-popup">
+    <span class="badge ${conf.cls}">${conf.txt}</span>
+    <h4>${d.itemType || 'ゴミ'}</h4>
+    <div class="meta">${date}${d.area && d.area.town ? ' ・ ' + d.area.town : ''}</div>
+    ${photo}
+  </div>`;
+}
+
+function loadReports(){
+  db.collection('reports').orderBy('createdAt','desc').limit(500).onSnapshot(snap => {
+    markersLayer.clearLayers();
+    const heatPoints = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (!d.location) return;
+      const lat = d.location.latitude, lng = d.location.longitude;
+      heatPoints.push([lat, lng, 0.6]);
+      const marker = L.marker([lat,lng], { icon: buildDivIcon(d) });
+      marker.bindPopup(renderPopup(d));
+      markersLayer.addLayer(marker);
+    });
+    if (heatLayer) map.removeLayer(heatLayer);
+    heatLayer = L.heatLayer(heatPoints, { radius:32, blur:24, maxZoom:16 }).addTo(map);
+  }, err => console.error('reports取得エラー:', err));
+}
+loadReports();
+
+/* =========================================================
+   報告シート
+========================================================= */
+const ITEM_TYPES = [
+  { cat:'ポイ捨て', label:'ペットボトル', emoji:'🧴' },
+  { cat:'ポイ捨て', label:'タバコ', emoji:'🚬' },
+  { cat:'ポイ捨て', label:'缶', emoji:'🥫' },
+  { cat:'ポイ捨て', label:'食品容器', emoji:'🍱' },
+  { cat:'ポイ捨て', label:'ビニール袋', emoji:'🛍️' },
+  { cat:'ポイ捨て', label:'お菓子袋', emoji:'🍬' },
+  { cat:'ポイ捨て', label:'ガラス', emoji:'🍾' },
+  { cat:'ポイ捨て', label:'電池', emoji:'🔋' },
+  { cat:'ポイ捨て', label:'その他', emoji:'❔' },
+  { cat:'海ごみ', label:'漂着ペットボトル', emoji:'🧴' },
+  { cat:'海ごみ', label:'発泡スチロール', emoji:'⚪' },
+  { cat:'海ごみ', label:'漁具・ロープ', emoji:'🎣' },
+  { cat:'海ごみ', label:'ブイ', emoji:'🛟' },
+  { cat:'海ごみ', label:'流木', emoji:'🪵' },
+  { cat:'海ごみ', label:'マイクロプラ', emoji:'🔬' },
+  { cat:'海ごみ', label:'缶・金属', emoji:'🥫' },
+  { cat:'海ごみ', label:'ガラス片', emoji:'🔻' },
+  { cat:'海ごみ', label:'その他海ごみ', emoji:'❔' },
+];
+
+let selectedCategory = 'ポイ捨て';
+let selectedItem = null;
+let selectedLocation = null;
+let selectedPhotoFile = null;
+
+function renderIconGrid(){
+  const grid = document.getElementById('iconGrid');
+  grid.innerHTML = '';
+  ITEM_TYPES.filter(i => i.cat === selectedCategory).forEach(item => {
+    const cell = document.createElement('div');
+    cell.className = 'icon-cell' + (selectedItem === item.label ? ' active' : '');
+    cell.innerHTML = `<span class="em">${item.emoji}</span><span class="lb">${item.label}</span>`;
+    cell.onclick = () => { selectedItem = item.label; renderIconGrid(); updateSubmitState(); };
+    grid.appendChild(cell);
+  });
+}
+
+function selectCategory(cat){
+  selectedCategory = cat;
+  selectedItem = null;
+  document.querySelectorAll('#catTabs button').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
+  renderIconGrid();
+  updateSubmitState();
+}
+
+function captureLocation(){
+  if (!navigator.geolocation){ showToast('この端末では位置情報を取得できません'); return; }
+  document.getElementById('locText').textContent = '取得中…';
+  navigator.geolocation.getCurrentPosition(pos => {
+    selectedLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    document.getElementById('locText').textContent =
+      `取得済み（${selectedLocation.lat.toFixed(5)}, ${selectedLocation.lng.toFixed(5)}）`;
+    updateSubmitState();
+  }, err => {
+    console.error(err);
+    document.getElementById('locText').textContent = '取得に失敗しました。もう一度お試しください';
+  }, { enableHighAccuracy:true, timeout:8000 });
+}
+
+function onPhotoSelected(e){
   const file = e.target.files[0];
   if (!file) return;
+  selectedPhotoFile = file;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const box = document.getElementById('photoPreview');
+    box.style.backgroundImage = `url(${ev.target.result})`;
+    box.textContent = '';
+  };
+  reader.readAsDataURL(file);
+}
+
+function updateSubmitState(){
+  document.getElementById('submitBtn').disabled = !(selectedItem && selectedLocation);
+}
+
+function openSheet(){
+  selectedCategory = 'ポイ捨て'; selectedItem = null; selectedLocation = null; selectedPhotoFile = null;
+  document.getElementById('locText').textContent = '位置情報が未取得です';
+  document.getElementById('photoPreview').style.backgroundImage = '';
+  document.getElementById('photoPreview').textContent = 'タップして撮影・選択';
+  document.getElementById('photoInput').value = '';
+  selectCategory('ポイ捨て');
+  document.getElementById('sheetBackdrop').classList.add('open');
+}
+function closeSheet(){ document.getElementById('sheetBackdrop').classList.remove('open'); }
+
+async function submitReport(){
+  if (!selectedItem || !selectedLocation || !currentUser) return;
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true; btn.textContent = '投稿中…';
+
   try {
-    pendingPhotoDataUrl = await compressImage(file);
-  } catch (err) {
+    let photoUrl = null;
+    if (selectedPhotoFile){
+      const ref = storage.ref().child(`reports/${currentUser.uid}_${Date.now()}.jpg`);
+      const snap = await ref.put(selectedPhotoFile);
+      photoUrl = await snap.ref.getDownloadURL();
+    }
+    await db.collection('reports').add({
+      category: selectedCategory,
+      itemType: selectedItem,
+      location: new firebase.firestore.GeoPoint(selectedLocation.lat, selectedLocation.lng),
+      area: {},
+      photos: photoUrl ? [photoUrl] : [],
+      confidence: '未確認',
+      confirmCount: 0,
+      reportedBy: currentUser.uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      status: 'active'
+    });
+    closeSheet();
+    showToast('報告ありがとうございます！');
+    if (!currentUser.isAnonymous) loadMyStats(currentUser.uid);
+  } catch(err){
     console.error(err);
-    toast("写真の読み込みに失敗しました。もう一度お試しください。");
-    e.target.value = "";
-    return;
+    showToast('投稿に失敗しました。もう一度お試しください');
+  } finally {
+    btn.disabled = false; btn.textContent = '投稿する';
   }
-  document.getElementById("previewImg").src = pendingPhotoDataUrl;
-  document.getElementById("captureStage").classList.add("hidden");
-  document.getElementById("pinStage").classList.remove("hidden");
-  document.getElementById("toTypeBtn").disabled = true;
-  requestPinLocation();
 }
-document.getElementById("photoInputCamera").addEventListener("change", handlePhotoSelected);
-document.getElementById("photoInputAlbum").addEventListener("change", handlePhotoSelected);
 
-document.getElementById("retakeBtn").addEventListener("click", () => {
-  pendingPhotoDataUrl = null;
-  document.getElementById("pinStage").classList.add("hidden");
-  document.getElementById("captureStage").classList.remove("hidden");
-  document.getElementById("photoInputCamera").value = "";
-  document.getElementById("photoInputAlbum").value = "";
+/* =========================================================
+   下部ナビゲーション / ビュー切替
+========================================================= */
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const target = btn.dataset.view;
+    document.getElementById('map-wrap').classList.toggle('hidden', target !== 'map');
+    document.getElementById('view-mypage').classList.toggle('hidden', target !== 'mypage');
+    document.getElementById('view-soon').classList.toggle('hidden', target !== 'soon');
+  });
 });
 
-let pinMap = null, pinMarker = null;
-const DEFAULT_PIN_LATLNG = [34.4855, 136.7096]; // 伊勢市付近（GPSが取れない時の初期位置）
-
-function initOrUpdatePinMap(lat, lng, draggable) {
-  const target = [lat, lng];
-  if (!pinMap) {
-    pinMap = L.map("pinMap", { zoomControl: false }).setView(target, 17);
-    L.tileLayer(TILE_DEFS.normal.url, TILE_DEFS.normal.options).addTo(pinMap);
-    pinMarker = L.marker(target, { draggable: true }).addTo(pinMap);
-    pinMarker.on("dragend", () => {
-      const p = pinMarker.getLatLng();
-      pendingLat = p.lat;
-      pendingLng = p.lng;
-      document.getElementById("pinStatus").textContent = "ピンの位置を手動で調整しました。この位置でよければ「この場所で確定する」を押してください。";
-      document.getElementById("toTypeBtn").disabled = false;
-    });
-  } else {
-    pinMap.setView(target, 17);
-    pinMarker.setLatLng(target);
-  }
-  setTimeout(() => pinMap && pinMap.invalidateSize(), 150);
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
 }
 
-function requestPinLocation() {
-  document.getElementById("toTypeBtn").disabled = true;
-  document.getElementById("pinStatus").textContent = "現在地を取得中…";
-  if (!navigator.geolocation) {
-    initOrUpdatePinMap(...DEFAULT_PIN_LATLNG);
-    pendingLat = DEFAULT_PIN_LATLNG[0];
-    pendingLng = DEFAULT_PIN_LATLNG[1];
-    document.getElementById("pinStatus").textContent = "現在地が取得できないため、ピンをドラッグして位置を指定してください。";
-    document.getElementById("toTypeBtn").disabled = false;
-    return;
-  }
-  navigator.geolocation.getCurrentPosition((pos) => {
-    pendingLat = pos.coords.latitude;
-    pendingLng = pos.coords.longitude;
-    initOrUpdatePinMap(pendingLat, pendingLng);
-    document.getElementById("pinStatus").textContent = "現在地を取得しました。ずれている場合はピンをドラッグして調整できます。";
-    document.getElementById("toTypeBtn").disabled = false;
-  }, () => {
-    initOrUpdatePinMap(...DEFAULT_PIN_LATLNG);
-    pendingLat = DEFAULT_PIN_LATLNG[0];
-    pendingLng = DEFAULT_PIN_LATLNG[1];
-    document.getElementById("pinStatus").textContent = "現在地を取得できませんでした。ピンをドラッグして位置を指定してください。";
-    document.getElementById("toTypeBtn").disabled = false;
-  }, { enableHighAccuracy: true, timeout: 6000 });
-}
-document.getElementById("retryPinBtn").addEventListener("click", requestPinLocation);
-
-// 場所を確定 → ゴミの種類選択ステージへ進む（登録はまだ行わない）
-document.getElementById("toTypeBtn").addEventListener("click", () => {
-  if (pendingLat == null || pendingLng == null) return;
-  document.getElementById("pinStage").classList.add("hidden");
-  document.getElementById("typeStage").classList.remove("hidden");
-  renderTypeGrid();
-});
-
-async function saveDiscovery(lat, lng) {
-  try {
-    await addDoc(collection(db, "discoveries"), {
-      uid: currentUser.uid,
-      category: pendingCategory,
-      type: pendingSelection.id,
-      name: pendingSelection.name,
-      nameEn: pendingSelection.en,
-      photo: pendingPhotoDataUrl, // NOTE: for production, upload to Firebase Storage instead of inline base64
-      lat, lng,
-      createdAt: serverTimestamp(),
-    });
-    await setDoc(doc(db, "users", currentUser.uid), {
-      finds: increment(1), species: increment(1),
-    }, { merge: true });
-    toast("この内容で登録しました！");
-    resetCaptureStage();
-    showScreen("home");
-  } catch (e) {
-    console.error(e);
-    // 失敗時は写真・位置・選択内容を保持したままにして、種類をもう一度タップすれば再登録できるようにする
-    toast("登録に失敗しました。もう一度お試しください。");
-  }
-}
-
-/* ============================= Map ============================= */
-let leafletMap = null;
-let mapInitDone = false;
-let activeFilter = "all";
-
-/* 「すべて」＋ゴミの種類ごとのフィルター。横一列・横スクロールで並べる（.filterRow が overflow-x:auto）。 */
-const MAP_FILTERS = [
-  { id: "all", label: "すべて" },
-  ...TRASH_TYPES.map(t => ({ id: t.id, label: t.name, emoji: t.emoji })),
-];
-const filterRow = document.getElementById("mapFilterRow");
-MAP_FILTERS.forEach(f => {
-  const b = document.createElement("button");
-  b.className = "filterChip" + (f.id === "all" ? " active" : "");
-  b.textContent = f.id === "all" ? f.label : `${f.emoji} ${f.label}`;
-  b.addEventListener("click", () => {
-    activeFilter = f.id;
-    filterRow.querySelectorAll(".filterChip").forEach(c => c.classList.remove("active"));
-    b.classList.add("active");
-    renderMarkers();
-  });
-  filterRow.appendChild(b);
-});
-
-let discoveryMarkersLayer = null;
-let allDiscoveries = [];
-
-/* ---------------- 地図の種類（通常／グレー／衛星） ----------------
-   ログインし直したり画面を更新したりしても、必ず「通常」から起動する
-   （選択状態は保存しない仕様）。 */
-const TILE_DEFS = {
-  normal: {
-    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    options: { attribution: "&copy; OpenStreetMap contributors", maxZoom: 19 },
-  },
-  gray: {
-    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-    options: { attribution: "&copy; OpenStreetMap contributors &copy; CARTO", subdomains: "abcd", maxZoom: 19 },
-  },
-  satellite: {
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    options: { attribution: "Tiles &copy; Esri", maxZoom: 19 },
-  },
-};
-let currentTileLayer = null;
-let activeMapType = "normal";
-
-function setMapType(type) {
-  if (!leafletMap || !TILE_DEFS[type]) return;
-  activeMapType = type;
-  if (currentTileLayer) leafletMap.removeLayer(currentTileLayer);
-  const def = TILE_DEFS[type];
-  currentTileLayer = L.tileLayer(def.url, def.options).addTo(leafletMap);
-  document.querySelectorAll("#mapTypeCtrl button").forEach(b =>
-    b.classList.toggle("active", b.dataset.type === type)
-  );
-}
-document.querySelectorAll("#mapTypeCtrl button").forEach(b =>
-  b.addEventListener("click", () => setMapType(b.dataset.type))
-);
-
-function initMapIfNeeded() {
-  if (mapInitDone) { leafletMap.invalidateSize(); return; }
-  mapInitDone = true;
-
-  // Default center: Ise Shrine area, Mie, Japan
-  leafletMap = L.map("leafletMap", { zoomControl: false }).setView([34.4855, 136.7096], 14);
-  setMapType("normal"); // 起動時は必ず通常マップ
-  discoveryMarkersLayer = L.layerGroup().addTo(leafletMap);
-
-  // ---- スマホで地図の一部が表示されない（グレーの空白ができる）バグ対策 ----
-  // コンテナのサイズが変わるたびに描画サイズを再計算する
-  const mapEl = document.getElementById("leafletMap");
-  if (window.ResizeObserver) {
-    new ResizeObserver(() => leafletMap.invalidateSize()).observe(mapEl);
-  }
-  window.addEventListener("resize", () => leafletMap.invalidateSize());
-  window.addEventListener("orientationchange", () => setTimeout(() => leafletMap.invalidateSize(), 300));
-  // 初回表示直後にタイルが崩れることがあるため、少し時間を置いてもう一度補正
-  setTimeout(() => leafletMap.invalidateSize(), 300);
-
-  navigator.geolocation?.getCurrentPosition((pos) => {
-    leafletMap.setView([pos.coords.latitude, pos.coords.longitude], 15);
-    L.circleMarker([pos.coords.latitude, pos.coords.longitude], {
-      radius: 8, color: "#4a90d9", fillColor: "#4a90d9", fillOpacity: .6,
-    }).addTo(leafletMap).bindPopup("現在地");
-  });
-
-  if (db) {
-    const q = query(collection(db, "discoveries"), orderBy("createdAt", "desc"), limit(200));
-    onSnapshot(q, (snap) => {
-      allDiscoveries = [];
-      snap.forEach(d => { const v = d.data(); if (v.lat && v.lng) allDiscoveries.push(v); });
-      renderMarkers();
-      updateAreaStats();
-    });
-  } else {
-    renderAreaStatsPlaceholder();
-  }
-}
-
-function renderMarkers() {
-  if (!discoveryMarkersLayer) return;
-  discoveryMarkersLayer.clearLayers();
-  const list = activeFilter === "all" ? allDiscoveries : allDiscoveries.filter(d => (d.type || "other") === activeFilter);
-  list.forEach(d => {
-    const t = TRASH_TYPES.find(x => x.id === d.type) || TRASH_TYPES[TRASH_TYPES.length - 1];
-    const cat = CATEGORIES.find(c => c.id === d.category) || CATEGORIES[CATEGORIES.length - 1];
-    const icon = L.divIcon({
-      className: "trashPinIcon",
-      html: `<div class="trashPinInner" style="background:${cat.color};">${t.emoji}</div>`,
-      iconSize: [30, 30],
-      iconAnchor: [15, 15],
-      popupAnchor: [0, -16],
-    });
-    L.marker([d.lat, d.lng], { icon })
-      .addTo(discoveryMarkersLayer)
-      .bindPopup(`<b>${t.emoji} ${d.name || t.name}</b>`);
+/* =========================================================
+   PWA: Service Worker 登録
+========================================================= */
+if ('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW登録失敗:', err));
   });
 }
-
-function updateAreaStats() {
-  const counts = { poi: 0, umigomi: 0, other: 0 };
-  allDiscoveries.forEach(d => {
-    if (d.category === "poi") counts.poi++;
-    else if (d.category === "umigomi") counts.umigomi++;
-    else counts.other++;
-  });
-  const el = document.getElementById("areaStats");
-  el.innerHTML = `
-    <div class="cell"><div class="n">${counts.poi}</div><div class="l">ポイ捨て</div></div>
-    <div class="cell"><div class="n">${counts.umigomi}</div><div class="l">海ごみ</div></div>
-    <div class="cell"><div class="n">${counts.other}</div><div class="l">その他</div></div>`;
-}
-function renderAreaStatsPlaceholder() {
-  document.getElementById("areaStats").innerHTML = `
-    <div class="cell"><div class="n">128</div><div class="l">ポイ捨て</div></div>
-    <div class="cell"><div class="n">64</div><div class="l">海ごみ</div></div>
-    <div class="cell"><div class="n">31</div><div class="l">その他</div></div>`;
-}
-
-/* ============================= Ranking ============================= */
-let rankType = "finds", rankPeriod = "month";
-const RANK_CUTOFF = 30; // 30位まで順位表示。31位以降は50音順でリスト
-function renderRanking() {
-  const el = document.getElementById("rankList");
-  const list = buildRankingList(rankType);
-  const medals = ["🥇", "🥈", "🥉"];
-  let html = "";
-  list.forEach((item, i) => {
-    if (i === RANK_CUTOFF) {
-      html += `<div class="rankDivider">${RANK_CUTOFF + 1}位以降（50音順）</div>`;
-    }
-    if (i < RANK_CUTOFF) {
-      html += `
-        <div class="rankRow ${i === 0 ? "top1" : i === 1 ? "top2" : i === 2 ? "top3" : ""}">
-          <div class="medal">${medals[i] || i + 1}</div>
-          <div class="town">${item.name}</div>
-          <div class="count">${item.count}<small>件</small></div>
-        </div>`;
-    } else {
-      html += `
-        <div class="rankRow rankRow-plain">
-          <div class="medal"></div>
-          <div class="town">${item.name}</div>
-          <div class="count">${item.count}<small>件</small></div>
-        </div>`;
-    }
-  });
-  el.innerHTML = html;
-}
-document.querySelectorAll(".rankTabs button").forEach(b => b.addEventListener("click", () => {
-  document.querySelectorAll(".rankTabs button").forEach(x => x.classList.remove("active"));
-  b.classList.add("active");
-  rankType = b.dataset.rank;
-  renderRanking();
-}));
-document.querySelectorAll(".periodTabs button").forEach(b => b.addEventListener("click", () => {
-  document.querySelectorAll(".periodTabs button").forEach(x => x.classList.remove("active"));
-  b.classList.add("active");
-  rankPeriod = b.dataset.period; // NOTE: mock data doesn't vary by period yet — wire to Firestore query when ready
-  renderRanking();
-}));
-renderRanking();
-
-/* ============================= Recent list (図鑑画面) ============================= */
-function renderRecentPlaceholder() {
-  document.getElementById("recentList").innerHTML =
-    `<p style="text-align:center; color:var(--gray); font-size:13px; padding:20px 0;">まだ発見の記録がありません。<br>「発見する」から最初の1枚を登録しましょう！</p>`;
-}
-renderRecentPlaceholder();
-
-/* ============================= Boot ============================= */
-showScreen("home");
 </script>
 </body>
 </html>
