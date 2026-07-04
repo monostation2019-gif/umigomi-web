@@ -598,7 +598,11 @@ function normalizeName(name){
 }
 
 async function saveProfile(){
-  if (!currentUser) return;
+  if (!currentUser){
+    console.error('保存できません: currentUser が未設定です（Firebase認証が完了していない可能性があります）');
+    showToast('通信状態を確認して、もう一度お試しください');
+    return;
+  }
   const input = document.getElementById('nameInput');
   const raw = input.value.trim();
   const errEl = document.getElementById('nameError');
