@@ -73,6 +73,11 @@ header{
 #map-wrap{position:relative; z-index:1; flex:1; min-height:0;}
 #map{position:absolute; inset:0;}
 .leaflet-control-layers{border-radius:12px !important; overflow:hidden; font-family:"Noto Sans JP", sans-serif;}
+.locate-btn{
+  width:36px; height:36px; background:#fff; border:none; border-radius:8px;
+  box-shadow:0 1px 5px rgba(0,0,0,0.35); font-size:19px; color:var(--blue);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+}
 
 .mentor-chip{
   position:absolute; top:14px; left:14px; right:70px; z-index:15;
@@ -433,6 +438,47 @@ L.control.zoom({ position:'bottomright' }).addTo(map);
 
 let heatLayer = null;
 let markersLayer = L.layerGroup().addTo(map);
+
+/* ---- 現在地の自動取得 ---- */
+let myLocationMarker = null;
+let myAccuracyCircle = null;
+
+function goToMyLocation(showFeedback){
+  if (showFeedback) showToast('現在地を取得中…');
+  map.locate({ setView:true, maxZoom:16, enableHighAccuracy:true, timeout:8000 });
+}
+
+map.on('locationfound', (e) => {
+  if (myLocationMarker) map.removeLayer(myLocationMarker);
+  if (myAccuracyCircle) map.removeLayer(myAccuracyCircle);
+  myAccuracyCircle = L.circle(e.latlng, {
+    radius: e.accuracy / 2, color:'#2F6FED', weight:1, fillColor:'#2F6FED', fillOpacity:0.08
+  }).addTo(map);
+  myLocationMarker = L.circleMarker(e.latlng, {
+    radius:8, color:'#fff', weight:3, fillColor:'#2F6FED', fillOpacity:1
+  }).addTo(map);
+});
+
+map.on('locationerror', (e) => {
+  console.warn('現在地取得エラー:', e.message);
+});
+
+goToMyLocation(false);
+
+const LocateControl = L.Control.extend({
+  options:{ position:'bottomright' },
+  onAdd: function(){
+    const btn = L.DomUtil.create('button', 'locate-btn');
+    btn.innerHTML = '⌖';
+    btn.title = '現在地に戻る';
+    L.DomEvent.on(btn, 'click', (ev) => {
+      L.DomEvent.stopPropagation(ev);
+      goToMyLocation(true);
+    });
+    return btn;
+  }
+});
+map.addControl(new LocateControl());
 
 const CONFIDENCE_LABEL = {
   '確認済み': { cls:'ok', txt:'確認済み' },
