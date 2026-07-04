@@ -117,7 +117,7 @@ img{max-width:100%; display:block;}
 .statCard .num{font-size:20px; font-weight:900; color:var(--green);}
 .statCard .lbl{font-size:11px; color:var(--gray); margin-top:2px;}
 
-.zukanGrid{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:0 18px 24px;}
+.zukanGrid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:0 18px 24px;}
 .zukanItem{display:flex; flex-direction:column; align-items:center; gap:6px;}
 .zukanItem .circle{
   width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px;
@@ -135,7 +135,7 @@ img{max-width:100%; display:block;}
 input[type=file]{display:none;}
 
 /* ---------- Category / Type picker (manual selection, no AI) ---------- */
-.catPickGrid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:0 18px 18px;}
+.catPickGrid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin:0 18px 18px;}
 .catPickBtn{
   display:flex; flex-direction:column; align-items:center; gap:8px; background:#fff;
   border:2px solid var(--border); border-radius:16px; padding:16px 4px; font-size:12px; font-weight:700; color:var(--ink);
@@ -193,7 +193,7 @@ input[type=file]{display:none;}
   border-radius:10px; white-space:nowrap; text-align:center;
 }
 .mapTypeCtrl button.active{background:var(--green); color:#fff;}
-.areaStats{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:14px 18px;}
+.areaStats{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:14px 18px;}
 .areaStats .cell{background:#fff; border:1px solid var(--border); border-radius:14px; padding:10px 4px; text-align:center;}
 .areaStats .cell .n{font-size:16px; font-weight:900; color:var(--green);}
 .areaStats .cell .l{font-size:10.5px; color:var(--gray); margin-top:2px;}
@@ -466,110 +466,42 @@ try {
   console.warn("Firebase init skipped (config not set yet):", e.message);
 }
 
-/* ---------------- Categories (図鑑) ---------------- */
+/* ---------------- Categories (図鑑) ----------------
+   花・野鳥・昆虫・樹木の自然図鑑とAI/Google検索による識別は廃止し、
+   ポイ捨てゴミ（陸）と海ゴミ（海岸）の2つに絞ったゴミ調査アプリに切り替え。 */
 const CATEGORIES = [
   { id: "poi",     name: "ポイ捨て図鑑", emoji: "🗑️", color: "#f2a33c" },
-  { id: "flower",  name: "花図鑑",       emoji: "🌸", color: "#e8688f" },
-  { id: "bird",    name: "野鳥図鑑",     emoji: "🐦", color: "#5a6b57" },
-  { id: "insect",  name: "昆虫図鑑",     emoji: "🦋", color: "#e0a627" },
-  { id: "tree",    name: "樹木図鑑",     emoji: "🌳", color: "#2f8a52" },
   { id: "umigomi", name: "海ごみ図鑑",   emoji: "🌊", color: "#4a90d9" },
   { id: "other",   name: "その他いろいろ", emoji: "🔍", color: "#8a8a82" },
 ];
 
 /* ---------------- ゴミの種類（アイコンボタンで選択） ----------------
-   写真によるAI自動判定は精度が不十分（同じ写真でも結果が変わる）で、
-   撮り直しや誤登録・図鑑の乱れの原因になっていたため廃止。
-   決まった種類一覧からユーザー自身がタップして選ぶ方式にする。 */
-const WASTE_TYPES = {
-  poi: [
-    { id: "can",       name: "空き缶",             emoji: "🥫" },
-    { id: "pet",       name: "ペットボトル",        emoji: "🧴" },
-    { id: "bag",       name: "ビニール袋",          emoji: "🛍️" },
-    { id: "cigarette", name: "たばこの吸い殻",      emoji: "🚬" },
-    { id: "paper",     name: "紙くず・チラシ",      emoji: "📄" },
-    { id: "food",      name: "食品容器・包装",      emoji: "🍱" },
-    { id: "glass",     name: "ガラスくず",          emoji: "🍾" },
-    { id: "metal",     name: "金属くず",            emoji: "🔩" },
-    { id: "dump",      name: "不法投棄（家電等）",  emoji: "🚮" },
-    { id: "other",     name: "その他",              emoji: "❔" },
-  ],
-  umigomi: [
-    { id: "plastic",   name: "プラスチック片",      emoji: "🧩" },
-    { id: "styro",     name: "発泡スチロール片",    emoji: "🧊" },
-    { id: "pet",       name: "ペットボトル",        emoji: "🧴" },
-    { id: "gear",      name: "漁具・ロープ",        emoji: "🪢" },
-    { id: "net",       name: "漁網",                emoji: "🕸️" },
-    { id: "wood",      name: "木材・流木",          emoji: "🪵" },
-    { id: "can",       name: "缶・金属くず",        emoji: "🥫" },
-    { id: "glass",     name: "ガラス・陶器",        emoji: "🍾" },
-    { id: "cloth",     name: "布・繊維くず",        emoji: "🧵" },
-    { id: "other",     name: "その他",              emoji: "❔" },
-  ],
-};
+   写真によるAI自動判定・Google検索での識別は廃止。
+   陸・海どちらでも共通で使う種類一覧をアイコンボタンにし、
+   ユーザー自身がタップして選ぶ方式にする（表記ゆれ・誤登録の防止）。 */
+const TRASH_TYPES = [
+  { id: "pet",       name: "ペットボトル",       emoji: "🧴" },
+  { id: "plastic",   name: "プラスチック",       emoji: "🧩" },
+  { id: "vinyl",     name: "ビニール類",         emoji: "🛍️" },
+  { id: "tape",      name: "テープ類",           emoji: "📼" },
+  { id: "cigarette", name: "タバコ",             emoji: "🚬" },
+  { id: "lighter",   name: "ライター",           emoji: "🔥" },
+  { id: "paper",     name: "紙類",               emoji: "📄" },
+  { id: "cardboard", name: "段ボール",           emoji: "📦" },
+  { id: "can",       name: "缶",                 emoji: "🥫" },
+  { id: "bottle",    name: "ビン",               emoji: "🍾" },
+  { id: "metal",     name: "金属類",             emoji: "🔩" },
+  { id: "fishgear",  name: "漁具（竿・リール）", emoji: "🎣" },
+  { id: "lure",      name: "ルアー",             emoji: "🐟" },
+  { id: "float",     name: "浮き",               emoji: "🔴" },
+  { id: "net",       name: "網",                 emoji: "🕸️" },
+  { id: "rope",      name: "ロープ",             emoji: "🪢" },
+  { id: "floater",   name: "フロート",           emoji: "🧊" },
+  { id: "other",     name: "その他",             emoji: "❔" },
+];
+// poi・umigomi のどちらでも同じ種類一覧を使う
+const WASTE_TYPES = { poi: TRASH_TYPES, umigomi: TRASH_TYPES };
 
-/* ---------------- 生き物・植物の候補リスト（検索して選ぶ） ----------------
-   伊勢志摩エリアでよく見られる代表的な種類の初期リスト（たたき台）です。
-   実際に観察してみて「違う」「リストにない」ものが多ければ、
-   このSPECIES_DBに随時追加・修正していってください。 */
-const SPECIES_DB = {
-  flower: [
-    { name: "ハマヒルガオ",         en: "Beach morning glory", emoji: "🌸" },
-    { name: "ハマゴウ",             en: "Beach vitex",         emoji: "🌸" },
-    { name: "スカシユリ",           en: "Coastal lily",        emoji: "🌼" },
-    { name: "ハマダイコン",         en: "Wild radish",         emoji: "🌸" },
-    { name: "ノアザミ",             en: "Japanese thistle",    emoji: "🌸" },
-    { name: "ヒルガオ",             en: "Field bindweed",      emoji: "🌸" },
-    { name: "ネコノシタ（ハマグルマ）", en: "Beach sunflower",  emoji: "🌼" },
-    { name: "コセンダングサ",       en: "Beggar-ticks",        emoji: "🌼" },
-    { name: "セイタカアワダチソウ", en: "Goldenrod",           emoji: "🌼" },
-    { name: "タチアオイ",           en: "Hollyhock",           emoji: "🌺" },
-    { name: "アジサイ",             en: "Hydrangea",           emoji: "💠" },
-    { name: "ツワブキ",             en: "Leopard plant",       emoji: "🌼" },
-  ],
-  bird: [
-    { name: "アオサギ",       en: "Grey heron",         emoji: "🐦" },
-    { name: "ダイサギ",       en: "Great egret",        emoji: "🐦" },
-    { name: "コサギ",         en: "Little egret",       emoji: "🐦" },
-    { name: "イソヒヨドリ",   en: "Blue rock thrush",   emoji: "🐦" },
-    { name: "ウミネコ",       en: "Black-tailed gull",  emoji: "🕊️" },
-    { name: "トビ",           en: "Black kite",         emoji: "🦅" },
-    { name: "ミサゴ",         en: "Osprey",             emoji: "🦅" },
-    { name: "カワウ",         en: "Great cormorant",    emoji: "🐦" },
-    { name: "カルガモ",       en: "Spot-billed duck",   emoji: "🦆" },
-    { name: "ハクセキレイ",   en: "White wagtail",      emoji: "🐦" },
-    { name: "ヒヨドリ",       en: "Brown-eared bulbul", emoji: "🐦" },
-    { name: "スズメ",         en: "Tree sparrow",       emoji: "🐦" },
-  ],
-  insect: [
-    { name: "モンシロチョウ",     en: "Cabbage white",      emoji: "🦋" },
-    { name: "ナミアゲハ",         en: "Swallowtail",        emoji: "🦋" },
-    { name: "アキアカネ（赤とんぼ）", en: "Red dragonfly",  emoji: "🪰" },
-    { name: "ショウリョウバッタ", en: "Rice grasshopper",   emoji: "🦗" },
-    { name: "アブラゼミ",         en: "Cicada",             emoji: "🦗" },
-    { name: "クマゼミ",           en: "Large cicada",       emoji: "🦗" },
-    { name: "テントウムシ",       en: "Ladybug",            emoji: "🐞" },
-    { name: "カナブン",           en: "Beetle",             emoji: "🪲" },
-    { name: "ハラビロカマキリ",   en: "Praying mantis",     emoji: "🦟" },
-    { name: "ヤマトシジミ",       en: "Pale grass blue",    emoji: "🦋" },
-    { name: "オオスズメバチ",     en: "Giant hornet",       emoji: "🐝" },
-    { name: "アリ",               en: "Ant",                emoji: "🐜" },
-  ],
-  tree: [
-    { name: "クロマツ",     en: "Black pine",          emoji: "🌲" },
-    { name: "クスノキ",     en: "Camphor tree",        emoji: "🌳" },
-    { name: "ウバメガシ",   en: "Ubame oak",           emoji: "🌳" },
-    { name: "トベラ",       en: "Japanese cheesewood", emoji: "🌳" },
-    { name: "ヤブツバキ",   en: "Camellia",            emoji: "🌳" },
-    { name: "ソテツ",       en: "Sago palm",           emoji: "🌴" },
-    { name: "センダン",     en: "Chinaberry",          emoji: "🌳" },
-    { name: "ヤマモモ",     en: "Japanese bayberry",   emoji: "🌳" },
-    { name: "スダジイ",     en: "Chinquapin",          emoji: "🌳" },
-    { name: "アコウ",       en: "Ficus superba",       emoji: "🌳" },
-    { name: "ハマヒサカキ", en: "Coastal eurya",       emoji: "🌳" },
-    { name: "マサキ",       en: "Japanese spindle",    emoji: "🌳" },
-  ],
-};
 
 /* ---------------- 伊勢市 全町名リスト（50音順） ----------------
    伊勢市公式「町別人口・世帯数統計表」（令和8年5月現在）に基づき、
@@ -889,35 +821,6 @@ function selectCategory(catId) {
   document.getElementById("captureHint").textContent = `「${cat.name}」に登録します。写真を撮ってください`;
 }
 
-// 候補リストにない生き物・植物を、撮った写真からGoogleで調べるための補助機能。
-// スマホでは共有シートからGoogleアプリ／Lensに写真を直接渡せる（Web Share API）。
-// 対応していない環境（PCなど）ではlens.google.comを開き、手動でアップロードしてもらう。
-function dataUrlToFile(dataUrl, filename) {
-  const arr = dataUrl.split(",");
-  const mimeMatch = arr[0].match(/:(.*?);/);
-  const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
-  const bstr = atob(arr[1]);
-  let n = bstr.length;
-  const u8arr = new Uint8Array(n);
-  while (n--) u8arr[n] = bstr.charCodeAt(n);
-  return new File([u8arr], filename, { type: mime });
-}
-
-async function searchWithGoogleLens() {
-  if (!pendingPhotoDataUrl) return;
-  try {
-    const file = dataUrlToFile(pendingPhotoDataUrl, "discovery.jpg");
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: "これは何？", text: "Google Lensで調べる" });
-      return;
-    }
-  } catch (e) {
-    if (e && e.name === "AbortError") return; // user cancelled the share sheet
-  }
-  window.open("https://lens.google.com/", "_blank");
-  toast("保存した写真をGoogle Lensのページにアップロードして調べてください");
-}
-
 function resetCaptureStage() {
   pendingCategory = null;
   pendingSelection = null;
@@ -931,7 +834,7 @@ function resetCaptureStage() {
 }
 document.getElementById("backToCatBtn").addEventListener("click", resetCaptureStage);
 
-// 種類選択エリアを描画。ゴミ系＝アイコンボタン、自然系＝検索リスト、その他＝自由入力。
+// 種類選択エリアを描画。ゴミ図鑑＝アイコンボタン、その他＝自由入力。
 function renderSelectStage() {
   const el = document.getElementById("selectStage");
   const label = document.getElementById("selectStageLabel");
@@ -952,50 +855,6 @@ function renderSelectStage() {
       pendingSelection = { name: t.name, en: "", emoji: t.emoji };
       registerBtn.disabled = false;
     }));
-  } else if (SPECIES_DB[pendingCategory]) {
-    label.textContent = "名前を検索してえらんでください（見つからなければ写真で調べるか、直接入力）";
-    el.innerHTML = `
-      <button type="button" class="btn btn-outline" id="lensSearchBtn" style="width:100%; margin-bottom:12px;">🔍 写真でGoogle検索して調べる</button>
-      <div class="speciesSearchBox"><input type="text" id="speciesSearchInput" placeholder="名前で検索…"></div>
-      <div class="speciesList" id="speciesListEl"></div>
-      <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border);">
-        <div style="font-size:12px; color:var(--gray); font-weight:700; margin-bottom:8px;">候補になければ、調べた名前を直接入力：</div>
-        <div class="speciesSearchBox" style="margin:0;"><input type="text" id="speciesManualInput" placeholder="例：〇〇（Google Lensで調べた名前）"></div>
-      </div>`;
-    document.getElementById("lensSearchBtn").addEventListener("click", searchWithGoogleLens);
-    document.getElementById("speciesManualInput").addEventListener("input", (e) => {
-      const v = e.target.value.trim();
-      if (!v) { registerBtn.disabled = true; pendingSelection = null; return; }
-      listEl && listEl.querySelectorAll(".speciesRow").forEach(r => r.classList.remove("active"));
-      pendingSelection = { name: v, en: "", emoji: "🔍" };
-      registerBtn.disabled = false;
-    });
-    const items = SPECIES_DB[pendingCategory];
-    const listEl = document.getElementById("speciesListEl");
-    function drawList(filter) {
-      const f = (filter || "").trim();
-      const filtered = f
-        ? items.filter(it => it.name.includes(f) || it.en.toLowerCase().includes(f.toLowerCase()))
-        : items;
-      listEl.innerHTML = filtered.length
-        ? filtered.map(it => `
-          <div class="speciesRow" data-name="${it.name}">
-            <span class="ic">${it.emoji}</span>
-            <div><div class="nm">${it.name}</div><div class="en">${it.en}</div></div>
-          </div>`).join("")
-        : `<div class="speciesEmpty">候補が見つかりません。上の「写真でGoogle検索」で調べて、下の欄に名前を入力してください。</div>`;
-      listEl.querySelectorAll(".speciesRow").forEach(row => row.addEventListener("click", () => {
-        listEl.querySelectorAll(".speciesRow").forEach(r => r.classList.remove("active"));
-        row.classList.add("active");
-        const it = items.find(x => x.name === row.dataset.name);
-        pendingSelection = { name: it.name, en: it.en, emoji: it.emoji };
-        registerBtn.disabled = false;
-        const manualInput = document.getElementById("speciesManualInput");
-        if (manualInput) manualInput.value = "";
-      }));
-    }
-    drawList("");
-    document.getElementById("speciesSearchInput").addEventListener("input", (e) => drawList(e.target.value));
   } else {
     label.textContent = "見つけたものの名前を入力してください";
     el.innerHTML = `<div class="speciesSearchBox"><input type="text" id="otherNameInput" placeholder="例：カニのはさみ など"></div>`;
@@ -1074,8 +933,7 @@ let activeFilter = "all";
 const MAP_FILTERS = [
   { id: "all", label: "すべて" },
   { id: "poi", label: "ポイ捨て" },
-  { id: "flower", label: "自然" },
-  { id: "bird", label: "生きもの" },
+  { id: "umigomi", label: "海ごみ" },
   { id: "other", label: "その他" },
 ];
 const filterRow = document.getElementById("mapFilterRow");
@@ -1182,25 +1040,22 @@ function renderMarkers() {
 }
 
 function updateAreaStats() {
-  const counts = { poi: 0, flower: 0, bird: 0, other: 0 };
+  const counts = { poi: 0, umigomi: 0, other: 0 };
   allDiscoveries.forEach(d => {
     if (d.category === "poi") counts.poi++;
-    else if (["flower", "tree", "umigomi"].includes(d.category)) counts.flower++;
-    else if (["bird", "insect"].includes(d.category)) counts.bird++;
+    else if (d.category === "umigomi") counts.umigomi++;
     else counts.other++;
   });
   const el = document.getElementById("areaStats");
   el.innerHTML = `
     <div class="cell"><div class="n">${counts.poi}</div><div class="l">ポイ捨て</div></div>
-    <div class="cell"><div class="n">${counts.flower}</div><div class="l">自然</div></div>
-    <div class="cell"><div class="n">${counts.bird}</div><div class="l">生きもの</div></div>
+    <div class="cell"><div class="n">${counts.umigomi}</div><div class="l">海ごみ</div></div>
     <div class="cell"><div class="n">${counts.other}</div><div class="l">その他</div></div>`;
 }
 function renderAreaStatsPlaceholder() {
   document.getElementById("areaStats").innerHTML = `
     <div class="cell"><div class="n">128</div><div class="l">ポイ捨て</div></div>
-    <div class="cell"><div class="n">86</div><div class="l">自然</div></div>
-    <div class="cell"><div class="n">64</div><div class="l">生きもの</div></div>
+    <div class="cell"><div class="n">64</div><div class="l">海ごみ</div></div>
     <div class="cell"><div class="n">31</div><div class="l">その他</div></div>`;
 }
 
