@@ -58,6 +58,7 @@ img{max-width:100%; display:block;}
 }
 .btn:active{transform:scale(.97);}
 .btn-google{background:#fff; color:#333;}
+.btn-apple{background:#000; color:#fff;}
 .btn-guest{background:rgba(255,255,255,.12); color:#fff; border:1px solid rgba(255,255,255,.5);}
 .btn-primary{background:var(--green-2); color:#fff;}
 .btn-outline{background:#fff; color:var(--green); border:1.5px solid var(--green-pale); box-shadow:var(--shadow);}
@@ -235,6 +236,9 @@ input[type=file]{display:none;}
       <button class="btn btn-google" id="googleLoginBtn">
         <span>🔎</span> Googleでログイン
       </button>
+      <button class="btn btn-apple" id="appleLoginBtn">
+        <span>🍎</span> Appleでログイン
+      </button>
       <button class="btn btn-guest" id="guestLoginBtn">ゲストで始める</button>
     </div>
   </div>
@@ -383,7 +387,7 @@ input[type=file]{display:none;}
    ========================================================================= */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously,
+  getAuth, GoogleAuthProvider, OAuthProvider, signInWithPopup, signInAnonymously,
   onAuthStateChanged, signOut
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
@@ -503,19 +507,28 @@ function toast(msg) {
   const t = document.getElementById("toast");
   t.textContent = msg;
   t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 1800);
+  setTimeout(() => t.classList.remove("show"), 4000);
 }
 
 /* ============================= Auth ============================= */
 document.getElementById("googleLoginBtn").addEventListener("click", async () => {
   if (!auth) return toast("Firebase未設定です");
   try { await signInWithPopup(auth, new GoogleAuthProvider()); }
-  catch (e) { toast("ログインに失敗しました"); console.error(e); }
+  catch (e) { toast("エラー: " + (e.code || e.message)); console.error(e); }
+});
+document.getElementById("appleLoginBtn").addEventListener("click", async () => {
+  if (!auth) return toast("Firebase未設定です");
+  try {
+    const provider = new OAuthProvider("apple.com");
+    provider.addScope("email");
+    provider.addScope("name");
+    await signInWithPopup(auth, provider);
+  } catch (e) { toast("エラー: " + (e.code || e.message)); console.error(e); }
 });
 document.getElementById("guestLoginBtn").addEventListener("click", async () => {
   if (!auth) return toast("Firebase未設定です");
   try { await signInAnonymously(auth); }
-  catch (e) { toast("ログインに失敗しました"); console.error(e); }
+  catch (e) { toast("エラー: " + (e.code || e.message)); console.error(e); }
 });
 document.getElementById("logoutBtn").addEventListener("click", async () => {
   if (!auth) return;
