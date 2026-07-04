@@ -70,7 +70,7 @@ header{
 }
 
 /* ---------- Map area ---------- */
-#map-wrap{position:relative; flex:1; min-height:0;}
+#map-wrap{position:relative; z-index:1; flex:1; min-height:0;}
 #map{position:absolute; inset:0;}
 .leaflet-control-layers{border-radius:12px !important; overflow:hidden; font-family:"Noto Sans JP", sans-serif;}
 
@@ -109,7 +109,7 @@ header{
 
 /* ---------- Bottom nav ---------- */
 nav.bottom{
-  position:relative; z-index:20;
+  position:relative; z-index:30;
   display:flex; background:var(--card);
   border-top:1px solid var(--line);
   padding:8px 4px calc(8px + var(--safe-bottom));
@@ -122,6 +122,7 @@ nav.bottom button .ic{font-size:19px;}
 nav.bottom button.active{color:var(--blue); font-weight:700;}
 
 .nav-report{
+  position:relative; z-index:5;
   flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
   border:none; background:none; margin-top:-30px; font-family:"Noto Sans JP", sans-serif;
 }
