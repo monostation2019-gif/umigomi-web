@@ -151,7 +151,17 @@ input[type=file]{display:none;}
   background:#fff; color:var(--gray); white-space:nowrap;
 }
 .filterChip.active{background:var(--green); color:#fff; border-color:var(--green);}
-#leafletMap{height:360px; margin:0 18px; border-radius:20px; overflow:hidden; box-shadow:var(--shadow); background:#dfe9e2;}
+.mapWrap{position:relative; margin:0 18px; border-radius:20px; overflow:hidden; box-shadow:var(--shadow);}
+#leafletMap{height:360px; width:100%; background:#dfe9e2;}
+.mapTypeCtrl{
+  position:absolute; top:10px; right:10px; z-index:1000; display:flex; flex-direction:column; gap:4px;
+  background:rgba(255,255,255,.96); border-radius:14px; padding:4px; box-shadow:var(--shadow);
+}
+.mapTypeCtrl button{
+  border:none; background:none; padding:7px 12px; font-size:11.5px; font-weight:700; color:var(--gray);
+  border-radius:10px; white-space:nowrap; text-align:center;
+}
+.mapTypeCtrl button.active{background:var(--green); color:#fff;}
 .areaStats{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:14px 18px;}
 .areaStats .cell{background:#fff; border:1px solid var(--border); border-radius:14px; padding:10px 4px; text-align:center;}
 .areaStats .cell .n{font-size:16px; font-weight:900; color:var(--green);}
@@ -248,7 +258,7 @@ input[type=file]{display:none;}
   <!-- ================= TOPBAR ================= -->
   <div class="topbar">
     <h1 id="topbarTitle">まちみっけ</h1>
-    <button class="iconbtn" id="logoutBtn" title="ログアウト">⎋</button>
+    <button class="iconbtn" id="logoutBtn" title="ログアウト" aria-label="ログアウト">🚪</button>
   </div>
 
   <!-- ================= HOME ================= -->
@@ -328,7 +338,14 @@ input[type=file]{display:none;}
   <!-- ================= 発見マップ ================= -->
   <section class="screen" id="screen-map">
     <div class="filterRow" id="mapFilterRow"></div>
-    <div id="leafletMap"></div>
+    <div class="mapWrap">
+      <div id="leafletMap"></div>
+      <div class="mapTypeCtrl" id="mapTypeCtrl">
+        <button data-type="normal" class="active">通常</button>
+        <button data-type="gray">グレー</button>
+        <button data-type="satellite">衛星</button>
+      </div>
+    </div>
     <div class="areaStats" id="areaStats"></div>
   </section>
 
@@ -660,7 +677,14 @@ function showScreen(name) {
     name === "discover" ? "発見する" :
     name === "map" ? "発見マップ" :
     name === "mypage" ? "マイページ" : "町別ランキング";
-  if (name === "map") setTimeout(initMapIfNeeded, 50);
+  if (name === "map") {
+    // 画面切り替えアニメーション（.18s）が終わってから初期化・再計算することで、
+    // タイルの一部が読み込まれず消えて見えるバグを防ぐ
+    setTimeout(() => {
+      initMapIfNeeded();
+      requestAnimationFrame(() => leafletMap && leafletMap.invalidateSize());
+    }, 200);
+  }
   if (name === "discover") resetCaptureStage();
 }
 document.querySelectorAll("[data-nav]").forEach(el =>
@@ -696,7 +720,7 @@ document.getElementById("guestLoginBtn").addEventListener("click", async () => {
   catch (e) { toast("エラー: " + (e.code || e.message)); console.error(e); }
 });
 document.getElementById("logoutBtn").addEventListener("click", async () => {
-  if (!auth) return;
+  if (!auth) { setLoggedIn(false); toast("ログアウトしました（デモ）"); return; }
   await signOut(auth);
 });
 
@@ -865,16 +889,59 @@ MAP_FILTERS.forEach(f => {
 let discoveryMarkersLayer = null;
 let allDiscoveries = [];
 
+/* ---------------- 地図の種類（通常／グレー／衛星） ----------------
+   ログインし直したり画面を更新したりしても、必ず「通常」から起動する
+   （選択状態は保存しない仕様）。 */
+const TILE_DEFS = {
+  normal: {
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    options: { attribution: "&copy; OpenStreetMap contributors", maxZoom: 19 },
+  },
+  gray: {
+    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+    options: { attribution: "&copy; OpenStreetMap contributors &copy; CARTO", subdomains: "abcd", maxZoom: 19 },
+  },
+  satellite: {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    options: { attribution: "Tiles &copy; Esri", maxZoom: 19 },
+  },
+};
+let currentTileLayer = null;
+let activeMapType = "normal";
+
+function setMapType(type) {
+  if (!leafletMap || !TILE_DEFS[type]) return;
+  activeMapType = type;
+  if (currentTileLayer) leafletMap.removeLayer(currentTileLayer);
+  const def = TILE_DEFS[type];
+  currentTileLayer = L.tileLayer(def.url, def.options).addTo(leafletMap);
+  document.querySelectorAll("#mapTypeCtrl button").forEach(b =>
+    b.classList.toggle("active", b.dataset.type === type)
+  );
+}
+document.querySelectorAll("#mapTypeCtrl button").forEach(b =>
+  b.addEventListener("click", () => setMapType(b.dataset.type))
+);
+
 function initMapIfNeeded() {
   if (mapInitDone) { leafletMap.invalidateSize(); return; }
   mapInitDone = true;
 
   // Default center: Ise Shrine area, Mie, Japan
   leafletMap = L.map("leafletMap", { zoomControl: false }).setView([34.4855, 136.7096], 14);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "&copy; OpenStreetMap contributors",
-  }).addTo(leafletMap);
+  setMapType("normal"); // 起動時は必ず通常マップ
   discoveryMarkersLayer = L.layerGroup().addTo(leafletMap);
+
+  // ---- スマホで地図の一部が表示されない（グレーの空白ができる）バグ対策 ----
+  // コンテナのサイズが変わるたびに描画サイズを再計算する
+  const mapEl = document.getElementById("leafletMap");
+  if (window.ResizeObserver) {
+    new ResizeObserver(() => leafletMap.invalidateSize()).observe(mapEl);
+  }
+  window.addEventListener("resize", () => leafletMap.invalidateSize());
+  window.addEventListener("orientationchange", () => setTimeout(() => leafletMap.invalidateSize(), 300));
+  // 初回表示直後にタイルが崩れることがあるため、少し時間を置いてもう一度補正
+  setTimeout(() => leafletMap.invalidateSize(), 300);
 
   navigator.geolocation?.getCurrentPosition((pos) => {
     leafletMap.setView([pos.coords.latitude, pos.coords.longitude], 15);
