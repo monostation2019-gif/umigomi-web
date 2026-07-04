@@ -615,10 +615,10 @@ async function saveProfile(){
   const btn = document.getElementById('profileSaveBtn');
   btn.disabled = true; btn.textContent = '保存中…';
 
-  const usernameRef = db.collection('usernames').doc(key);
-  const userRef = db.collection('users').doc(currentUser.uid);
-
   try {
+    const usernameRef = db.collection('usernames').doc(key);
+    const userRef = db.collection('users').doc(currentUser.uid);
+
     // 写真が新しく選ばれていればFirebase Storageにアップロード
     let finalAvatarPhotoUrl = existingAvatarPhotoUrl;
     if (avatarMode === 'photo' && selectedAvatarPhotoFile){
@@ -657,12 +657,17 @@ async function saveProfile(){
     closeProfileSheet();
     showToast('プロフィールを更新しました');
   } catch (err) {
-    if (err.message === 'DUPLICATE'){
+    console.error('プロフィール保存エラー:', err);
+    if (err && err.message === 'DUPLICATE'){
       errEl.textContent = 'その名前はすでに使われています。別の名前をお試しください';
       errEl.style.display = 'block';
     } else {
-      console.error('プロフィール保存エラー:', err);
-      showToast('保存に失敗しました。もう一度お試しください');
+      // devtoolsが無くても原因がわかるよう、実際のエラー内容を画面に直接表示する
+      const code = (err && err.code) ? err.code : '';
+      const msg = (err && err.message) ? err.message : String(err);
+      errEl.textContent = '保存に失敗しました： ' + (code ? code + ' / ' : '') + msg;
+      errEl.style.display = 'block';
+      showToast('保存に失敗しました');
     }
   } finally {
     btn.disabled = false; btn.textContent = '保存する';
@@ -946,6 +951,20 @@ function showToast(msg){
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2200);
 }
+
+/* =========================================================
+   デバッグ用：捕捉されなかったエラーを画面に表示
+========================================================= */
+window.addEventListener('error', (e) => {
+  console.error('未捕捉エラー:', e.message, e.filename, e.lineno);
+  showToast('エラー: ' + e.message);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const reason = e.reason;
+  const msg = (reason && reason.message) ? reason.message : String(reason);
+  console.error('未捕捉のPromiseエラー:', reason);
+  showToast('エラー: ' + msg);
+});
 
 /* =========================================================
    PWA: Service Worker 登録
