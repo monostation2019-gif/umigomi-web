@@ -889,6 +889,35 @@ function selectCategory(catId) {
   document.getElementById("captureHint").textContent = `「${cat.name}」に登録します。写真を撮ってください`;
 }
 
+// 候補リストにない生き物・植物を、撮った写真からGoogleで調べるための補助機能。
+// スマホでは共有シートからGoogleアプリ／Lensに写真を直接渡せる（Web Share API）。
+// 対応していない環境（PCなど）ではlens.google.comを開き、手動でアップロードしてもらう。
+function dataUrlToFile(dataUrl, filename) {
+  const arr = dataUrl.split(",");
+  const mimeMatch = arr[0].match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) u8arr[n] = bstr.charCodeAt(n);
+  return new File([u8arr], filename, { type: mime });
+}
+
+async function searchWithGoogleLens() {
+  if (!pendingPhotoDataUrl) return;
+  try {
+    const file = dataUrlToFile(pendingPhotoDataUrl, "discovery.jpg");
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: "これは何？", text: "Google Lensで調べる" });
+      return;
+    }
+  } catch (e) {
+    if (e && e.name === "AbortError") return; // user cancelled the share sheet
+  }
+  window.open("https://lens.google.com/", "_blank");
+  toast("保存した写真をGoogle Lensのページにアップロードして調べてください");
+}
+
 function resetCaptureStage() {
   pendingCategory = null;
   pendingSelection = null;
@@ -924,10 +953,23 @@ function renderSelectStage() {
       registerBtn.disabled = false;
     }));
   } else if (SPECIES_DB[pendingCategory]) {
-    label.textContent = "名前を検索してえらんでください（見つからなければ近いものでOK）";
+    label.textContent = "名前を検索してえらんでください（見つからなければ写真で調べるか、直接入力）";
     el.innerHTML = `
+      <button type="button" class="btn btn-outline" id="lensSearchBtn" style="width:100%; margin-bottom:12px;">🔍 写真でGoogle検索して調べる</button>
       <div class="speciesSearchBox"><input type="text" id="speciesSearchInput" placeholder="名前で検索…"></div>
-      <div class="speciesList" id="speciesListEl"></div>`;
+      <div class="speciesList" id="speciesListEl"></div>
+      <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border);">
+        <div style="font-size:12px; color:var(--gray); font-weight:700; margin-bottom:8px;">候補になければ、調べた名前を直接入力：</div>
+        <div class="speciesSearchBox" style="margin:0;"><input type="text" id="speciesManualInput" placeholder="例：〇〇（Google Lensで調べた名前）"></div>
+      </div>`;
+    document.getElementById("lensSearchBtn").addEventListener("click", searchWithGoogleLens);
+    document.getElementById("speciesManualInput").addEventListener("input", (e) => {
+      const v = e.target.value.trim();
+      if (!v) { registerBtn.disabled = true; pendingSelection = null; return; }
+      listEl && listEl.querySelectorAll(".speciesRow").forEach(r => r.classList.remove("active"));
+      pendingSelection = { name: v, en: "", emoji: "🔍" };
+      registerBtn.disabled = false;
+    });
     const items = SPECIES_DB[pendingCategory];
     const listEl = document.getElementById("speciesListEl");
     function drawList(filter) {
@@ -941,13 +983,15 @@ function renderSelectStage() {
             <span class="ic">${it.emoji}</span>
             <div><div class="nm">${it.name}</div><div class="en">${it.en}</div></div>
           </div>`).join("")
-        : `<div class="speciesEmpty">候補が見つかりません。ネットで調べて、近い種類を選ぶか<br>あとで管理画面から名前を修正してください。</div>`;
+        : `<div class="speciesEmpty">候補が見つかりません。上の「写真でGoogle検索」で調べて、下の欄に名前を入力してください。</div>`;
       listEl.querySelectorAll(".speciesRow").forEach(row => row.addEventListener("click", () => {
         listEl.querySelectorAll(".speciesRow").forEach(r => r.classList.remove("active"));
         row.classList.add("active");
         const it = items.find(x => x.name === row.dataset.name);
         pendingSelection = { name: it.name, en: it.en, emoji: it.emoji };
         registerBtn.disabled = false;
+        const manualInput = document.getElementById("speciesManualInput");
+        if (manualInput) manualInput.value = "";
       }));
     }
     drawList("");
