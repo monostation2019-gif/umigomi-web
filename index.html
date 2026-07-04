@@ -240,6 +240,26 @@ nav.bottom button.active{color:var(--blue); font-weight:700;}
   display:flex; align-items:center; justify-content:center; font-size:19px;
 }
 .avatar-cell.active{border-color:var(--blue); background:#EAF1FF;}
+.avatar-photo-picker{display:flex; flex-direction:column; align-items:center; margin-bottom:18px;}
+.avatar-preview-circle{
+  position:relative; width:88px; height:88px; border-radius:50%; border:1.5px solid var(--line);
+  overflow:visible;
+}
+.avatar-preview-inner{
+  width:100%; height:100%; border-radius:50%; background:#EFF2F8;
+  display:flex; align-items:center; justify-content:center; font-size:38px;
+  background-size:cover; background-position:center; overflow:hidden;
+}
+.avatar-preview-circle .cam-badge{
+  position:absolute; right:-2px; bottom:-2px; width:30px; height:30px; border-radius:50%;
+  background:var(--blue); color:#fff; display:flex; align-items:center; justify-content:center;
+  font-size:14px; border:3px solid var(--card); pointer-events:none;
+}
+.avatar-preview-circle input[type=file]{
+  position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border-radius:50%;
+}
+.avatar-hint{font-size:11px; color:var(--muted); margin:8px 0 0;}
+.avatar-remove-btn{border:none; background:none; color:var(--red); font-size:11.5px; font-weight:700; padding:4px; margin-top:2px;}
 .text-input{
   width:100%; padding:13px 14px; border:1.5px solid var(--line); border-radius:12px;
   font-size:14px; margin-bottom:4px; font-family:"Noto Sans JP", sans-serif; color:var(--ink);
@@ -388,6 +408,17 @@ nav.bottom button.active{color:var(--blue); font-weight:700;}
     <p class="sub">名前とアイコンはあとから何度でも変更できます</p>
 
     <label class="section-label">アイコン</label>
+    <div class="avatar-photo-picker">
+      <div class="avatar-preview-circle" id="avatarPreviewCircle">
+        <div class="avatar-preview-inner" id="avatarPreviewInner">👤</div>
+        <span class="cam-badge">📷</span>
+        <input type="file" accept="image/*" id="avatarPhotoInput" onchange="onAvatarPhotoSelected(event)">
+      </div>
+      <p class="avatar-hint">タップして写真から選択</p>
+      <button type="button" class="avatar-remove-btn" id="avatarRemoveBtn" style="display:none;" onclick="removeAvatarPhoto()">写真をやめてイラストに戻す</button>
+    </div>
+
+    <label class="section-label">またはイラストから選ぶ</label>
     <div class="avatar-grid" id="avatarGrid"></div>
 
     <label class="section-label">名前</label>
@@ -433,7 +464,10 @@ function renderProfile(user){
   const isAnon = user.isAnonymous;
   document.getElementById('profileName').textContent = isAnon ? "ゲストユーザー" : (user.displayName || "親方ファン");
   document.getElementById('profileSub').textContent = isAnon ? "ログインすると記録が消えません" : user.email || "";
-  document.getElementById('avatarInitial').textContent = isAnon ? "👤" : "🧑";
+  selectedAvatar = isAnon ? "👤" : "🧑";
+  existingAvatarType = 'emoji';
+  existingAvatarPhotoUrl = null;
+  setAvatarDisplay('avatarInitial', 'emoji', selectedAvatar, null);
 }
 
 function loadUserProfile(uid){
@@ -444,10 +478,10 @@ function loadUserProfile(uid){
         profileNickname = d.nickname;
         document.getElementById('profileName').textContent = d.nickname;
       }
-      if (d.avatar){
-        selectedAvatar = d.avatar;
-        document.getElementById('avatarInitial').textContent = d.avatar;
-      }
+      if (d.avatar) selectedAvatar = d.avatar;
+      existingAvatarType = d.avatarType || 'emoji';
+      existingAvatarPhotoUrl = d.avatarPhotoUrl || null;
+      setAvatarDisplay('avatarInitial', existingAvatarType, selectedAvatar, existingAvatarPhotoUrl);
     }
   }).catch(err => console.error('プロフィール取得エラー:', err));
 }
@@ -485,22 +519,76 @@ const AVATAR_OPTIONS = ['👤','🧑','🧑‍🌾','🧑‍🔧','🧑‍🚀',
 let profileNickname = null;
 let selectedAvatar = '👤';
 
+// avatarMode: 'emoji' or 'photo'（現在編集シート内で選択中の種別）
+let avatarMode = 'emoji';
+let selectedAvatarPhotoFile = null;   // 新しく選んだ写真（未保存）
+let existingAvatarType = 'emoji';     // Firestoreに保存済みの種別
+let existingAvatarPhotoUrl = null;    // Firestoreに保存済みの写真URL
+
+function setAvatarDisplay(elId, type, emoji, photoUrl){
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (type === 'photo' && photoUrl){
+    el.style.backgroundImage = `url(${photoUrl})`;
+    el.textContent = '';
+  } else {
+    el.style.backgroundImage = '';
+    el.textContent = emoji || '👤';
+  }
+}
+
 function renderAvatarGrid(){
   const grid = document.getElementById('avatarGrid');
   grid.innerHTML = '';
   AVATAR_OPTIONS.forEach(em => {
     const cell = document.createElement('div');
-    cell.className = 'avatar-cell' + (selectedAvatar === em ? ' active' : '');
+    cell.className = 'avatar-cell' + (avatarMode === 'emoji' && selectedAvatar === em ? ' active' : '');
     cell.textContent = em;
-    cell.onclick = () => { selectedAvatar = em; renderAvatarGrid(); };
+    cell.onclick = () => {
+      selectedAvatar = em;
+      avatarMode = 'emoji';
+      selectedAvatarPhotoFile = null;
+      document.getElementById('avatarPhotoInput').value = '';
+      document.getElementById('avatarRemoveBtn').style.display = 'none';
+      renderAvatarGrid();
+      setAvatarDisplay('avatarPreviewInner', 'emoji', em, null);
+    };
     grid.appendChild(cell);
   });
+}
+
+function onAvatarPhotoSelected(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  selectedAvatarPhotoFile = file;
+  avatarMode = 'photo';
+  const reader = new FileReader();
+  reader.onload = ev => {
+    setAvatarDisplay('avatarPreviewInner', 'photo', null, ev.target.result);
+    document.getElementById('avatarRemoveBtn').style.display = 'inline-flex';
+    renderAvatarGrid();
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeAvatarPhoto(){
+  avatarMode = 'emoji';
+  selectedAvatarPhotoFile = null;
+  document.getElementById('avatarPhotoInput').value = '';
+  document.getElementById('avatarRemoveBtn').style.display = 'none';
+  setAvatarDisplay('avatarPreviewInner', 'emoji', selectedAvatar, null);
+  renderAvatarGrid();
 }
 
 function openProfileSheet(){
   document.getElementById('nameError').style.display = 'none';
   document.getElementById('nameInput').value = profileNickname || '';
+  selectedAvatarPhotoFile = null;
+  document.getElementById('avatarPhotoInput').value = '';
+  avatarMode = existingAvatarType;
+  document.getElementById('avatarRemoveBtn').style.display = (avatarMode === 'photo') ? 'inline-flex' : 'none';
   renderAvatarGrid();
+  setAvatarDisplay('avatarPreviewInner', avatarMode, selectedAvatar, existingAvatarPhotoUrl);
   document.getElementById('profileSheetBackdrop').classList.add('open');
 }
 function closeProfileSheet(){ document.getElementById('profileSheetBackdrop').classList.remove('open'); }
@@ -527,6 +615,16 @@ async function saveProfile(){
   const userRef = db.collection('users').doc(currentUser.uid);
 
   try {
+    // 写真が新しく選ばれていればFirebase Storageにアップロード
+    let finalAvatarPhotoUrl = existingAvatarPhotoUrl;
+    if (avatarMode === 'photo' && selectedAvatarPhotoFile){
+      const ref = storage.ref().child(`avatars/${currentUser.uid}.jpg`);
+      const snap = await ref.put(selectedAvatarPhotoFile);
+      finalAvatarPhotoUrl = await snap.ref.getDownloadURL();
+    }
+    const finalAvatarType = avatarMode;
+    const finalAvatarEmoji = selectedAvatar;
+
     await db.runTransaction(async (tx) => {
       const nameSnap = await tx.get(usernameRef);
       if (nameSnap.exists && nameSnap.data().uid !== currentUser.uid){
@@ -538,12 +636,20 @@ async function saveProfile(){
         tx.delete(db.collection('usernames').doc(oldKey));
       }
       tx.set(usernameRef, { uid: currentUser.uid, name: raw });
-      tx.set(userRef, { nickname: raw, nameKey: key, avatar: selectedAvatar }, { merge: true });
+      tx.set(userRef, {
+        nickname: raw,
+        nameKey: key,
+        avatar: finalAvatarEmoji,
+        avatarType: finalAvatarType,
+        avatarPhotoUrl: finalAvatarType === 'photo' ? finalAvatarPhotoUrl : null
+      }, { merge: true });
     });
 
     profileNickname = raw;
+    existingAvatarType = finalAvatarType;
+    existingAvatarPhotoUrl = finalAvatarType === 'photo' ? finalAvatarPhotoUrl : null;
     document.getElementById('profileName').textContent = raw;
-    document.getElementById('avatarInitial').textContent = selectedAvatar;
+    setAvatarDisplay('avatarInitial', finalAvatarType, finalAvatarEmoji, finalAvatarPhotoUrl);
     closeProfileSheet();
     showToast('プロフィールを更新しました');
   } catch (err) {
