@@ -321,13 +321,8 @@ input[type=file]{display:none;}
 
   <!-- ================= 発見 (camera) ================= -->
   <section class="screen" id="screen-discover">
-    <div id="typeStage">
-      <div class="section-title" style="margin-top:14px;">なにを見つけましたか？</div>
-      <div class="filterRow" id="catToggleRow" style="margin:0 18px 14px;"></div>
-      <div class="typeGrid" id="typeGrid" style="margin:0 18px 18px;"></div>
-    </div>
-
-    <div id="captureStage" class="hidden">
+    <!-- STEP 1: 写真を撮る／アルバムから選ぶ -->
+    <div id="captureStage">
       <div class="cameraStage">
         <div class="cameraBox">
           <div class="ic">📷</div>
@@ -338,11 +333,11 @@ input[type=file]{display:none;}
           </div>
           <input type="file" id="photoInputCamera" accept="image/*" capture="environment">
           <input type="file" id="photoInputAlbum" accept="image/*">
-          <button class="btn btn-outline" id="backToTypeBtn" style="margin-top:14px; width:100%;">‹ 種類を選び直す</button>
         </div>
       </div>
     </div>
 
+    <!-- STEP 2: 地図で場所を確認・ピン打ち（現在地 or 手動） -->
     <div id="pinStage" class="hidden">
       <div class="previewCard">
         <img id="previewImg" src="" alt="撮影した写真">
@@ -352,10 +347,20 @@ input[type=file]{display:none;}
           <div id="pinStatus" style="font-size:12px; color:var(--gray); margin:10px 0 14px;">現在地を取得中…</div>
           <div class="resultBtns">
             <button class="btn btn-outline" id="retryPinBtn">📍 現在地を取得し直す</button>
-            <button class="btn btn-primary" id="registerBtn" disabled>この内容で登録する</button>
-            <button class="btn btn-outline" id="retakeBtn">撮り直す</button>
+            <button class="btn btn-primary" id="toTypeBtn" disabled>この場所で確定する ›</button>
+            <button class="btn btn-outline" id="retakeBtn">‹ 撮り直す</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- STEP 3: ゴミの種類を選んで登録 -->
+    <div id="typeStage" class="hidden">
+      <div class="section-title" style="margin-top:14px;">なにを見つけましたか？</div>
+      <div class="filterRow" id="catToggleRow" style="margin:0 18px 14px;"></div>
+      <div class="typeGrid" id="typeGrid" style="margin:0 18px 18px;"></div>
+      <div style="margin:0 18px;">
+        <button class="btn btn-outline" id="backToPinBtn" style="width:100%;">‹ 場所を選び直す</button>
       </div>
     </div>
   </section>
@@ -825,18 +830,15 @@ function renderTypeGrid() {
 }
 
 function selectType(t) {
+  // ゴミの種類はフロー最後のステップ。選んだ時点で写真・位置・種類がそろうので、そのまま登録する。
   pendingSelection = { name: t.name, en: "", emoji: t.emoji };
-  document.getElementById("typeStage").classList.add("hidden");
-  document.getElementById("captureStage").classList.remove("hidden");
-  const cat = CATEGORIES.find(c => c.id === pendingCategory);
-  document.getElementById("captureHint").textContent = `${cat.emoji}${t.emoji} 「${t.name}」を撮影してください`;
+  if (!db || !currentUser) { toast("この内容で登録しました（デモ）"); resetCaptureStage(); showScreen("home"); return; }
+  saveDiscovery(pendingLat, pendingLng);
 }
 
-document.getElementById("backToTypeBtn").addEventListener("click", () => {
-  document.getElementById("captureStage").classList.add("hidden");
-  document.getElementById("typeStage").classList.remove("hidden");
-  document.getElementById("photoInputCamera").value = "";
-  document.getElementById("photoInputAlbum").value = "";
+document.getElementById("backToPinBtn").addEventListener("click", () => {
+  document.getElementById("typeStage").classList.add("hidden");
+  document.getElementById("pinStage").classList.remove("hidden");
 });
 
 function resetCaptureStage() {
@@ -844,15 +846,15 @@ function resetCaptureStage() {
   pendingPhotoDataUrl = null;
   pendingLat = null;
   pendingLng = null;
-  document.getElementById("typeStage").classList.remove("hidden");
-  document.getElementById("captureStage").classList.add("hidden");
+  document.getElementById("captureStage").classList.remove("hidden");
   document.getElementById("pinStage").classList.add("hidden");
+  document.getElementById("typeStage").classList.add("hidden");
   document.getElementById("photoInputCamera").value = "";
   document.getElementById("photoInputAlbum").value = "";
   renderCatToggle();
   renderTypeGrid();
 }
-resetCaptureStage(); // 発見ページを開いたら、すぐ種類選択が見える状態にしておく
+resetCaptureStage(); // 発見ページを開いたら、まず写真選択（撮影／アルバム）が見える状態にしておく
 
 /* ---------------- 撮影 → 位置ピン確認 ---------------- */
 function handlePhotoSelected(e) {
@@ -864,7 +866,7 @@ function handlePhotoSelected(e) {
     document.getElementById("previewImg").src = pendingPhotoDataUrl;
     document.getElementById("captureStage").classList.add("hidden");
     document.getElementById("pinStage").classList.remove("hidden");
-    document.getElementById("registerBtn").disabled = true;
+    document.getElementById("toTypeBtn").disabled = true;
     requestPinLocation();
   };
   reader.readAsDataURL(file);
@@ -893,8 +895,8 @@ function initOrUpdatePinMap(lat, lng, draggable) {
       const p = pinMarker.getLatLng();
       pendingLat = p.lat;
       pendingLng = p.lng;
-      document.getElementById("pinStatus").textContent = "ピンの位置を手動で調整しました。この位置でよければ登録してください。";
-      document.getElementById("registerBtn").disabled = false;
+      document.getElementById("pinStatus").textContent = "ピンの位置を手動で調整しました。この位置でよければ「この場所で確定する」を押してください。";
+      document.getElementById("toTypeBtn").disabled = false;
     });
   } else {
     pinMap.setView(target, 17);
@@ -904,14 +906,14 @@ function initOrUpdatePinMap(lat, lng, draggable) {
 }
 
 function requestPinLocation() {
-  document.getElementById("registerBtn").disabled = true;
+  document.getElementById("toTypeBtn").disabled = true;
   document.getElementById("pinStatus").textContent = "現在地を取得中…";
   if (!navigator.geolocation) {
     initOrUpdatePinMap(...DEFAULT_PIN_LATLNG);
     pendingLat = DEFAULT_PIN_LATLNG[0];
     pendingLng = DEFAULT_PIN_LATLNG[1];
     document.getElementById("pinStatus").textContent = "現在地が取得できないため、ピンをドラッグして位置を指定してください。";
-    document.getElementById("registerBtn").disabled = false;
+    document.getElementById("toTypeBtn").disabled = false;
     return;
   }
   navigator.geolocation.getCurrentPosition((pos) => {
@@ -919,21 +921,24 @@ function requestPinLocation() {
     pendingLng = pos.coords.longitude;
     initOrUpdatePinMap(pendingLat, pendingLng);
     document.getElementById("pinStatus").textContent = "現在地を取得しました。ずれている場合はピンをドラッグして調整できます。";
-    document.getElementById("registerBtn").disabled = false;
+    document.getElementById("toTypeBtn").disabled = false;
   }, () => {
     initOrUpdatePinMap(...DEFAULT_PIN_LATLNG);
     pendingLat = DEFAULT_PIN_LATLNG[0];
     pendingLng = DEFAULT_PIN_LATLNG[1];
     document.getElementById("pinStatus").textContent = "現在地を取得できませんでした。ピンをドラッグして位置を指定してください。";
-    document.getElementById("registerBtn").disabled = false;
+    document.getElementById("toTypeBtn").disabled = false;
   }, { enableHighAccuracy: true, timeout: 6000 });
 }
 document.getElementById("retryPinBtn").addEventListener("click", requestPinLocation);
 
-document.getElementById("registerBtn").addEventListener("click", async () => {
-  if (!pendingSelection) return;
-  if (!db || !currentUser) { toast("この内容で登録しました（デモ）"); resetCaptureStage(); showScreen("home"); return; }
-  await saveDiscovery(pendingLat, pendingLng);
+// 場所を確定 → ゴミの種類選択ステージへ進む（登録はまだ行わない）
+document.getElementById("toTypeBtn").addEventListener("click", () => {
+  if (pendingLat == null || pendingLng == null) return;
+  document.getElementById("pinStage").classList.add("hidden");
+  document.getElementById("typeStage").classList.remove("hidden");
+  renderCatToggle();
+  renderTypeGrid();
 });
 
 async function saveDiscovery(lat, lng) {
