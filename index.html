@@ -586,25 +586,21 @@ function onAvatarPhotoSelected(e){
   const file = e.target.files[0];
   if (!file) return;
   avatarMode = 'photo';
+  document.getElementById('avatarRemoveBtn').style.display = 'inline-flex';
 
-  // まずは元画像でプレビューを即表示
-  const reader = new FileReader();
-  reader.onload = ev => {
-    setAvatarDisplay('avatarPreviewInner', 'photo', null, ev.target.result);
-    document.getElementById('avatarRemoveBtn').style.display = 'inline-flex';
-    renderAvatarGrid();
-  };
-  reader.readAsDataURL(file);
-
-  // アップロード用に縮小・圧縮したJPEGを作成しておく
-  // （スマホのカメラ写真は数MBになりがちで、そのままだとアップロードに
-  //   失敗しやすいため、正方形512pxのJPEGに変換して軽量化する）
+  // 縮小・圧縮したJPEGをbase64のData URLに変換し、Firestoreに直接保存する
+  // （スマホのカメラ写真は数MBになりがちで、そのままだと重すぎるため、
+  //   正方形512pxのJPEGに変換して軽量化してから使う）
   avatarPhotoReadyPromise = resizeImageToJpeg(file, 512, 0.85)
-    .then(blob => { selectedAvatarPhotoFile = blob; })
+    .then(blob => blobToDataURL(blob))
+    .then(dataUrl => {
+      selectedAvatarPhotoFile = dataUrl;
+      setAvatarDisplay('avatarPreviewInner', 'photo', null, dataUrl);
+      renderAvatarGrid();
+    })
     .catch(err => {
-      console.error('画像の圧縮に失敗:', err);
-      // 圧縮に失敗した場合は元ファイルをそのまま使う
-      selectedAvatarPhotoFile = file;
+      console.error('画像の処理に失敗:', err);
+      showToast('画像の読み込みに失敗しました。別の写真をお試しください');
     });
 }
 
@@ -631,6 +627,20 @@ function resizeImageToJpeg(file, maxSize, quality){
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('画像の読み込みに失敗しました')); };
     img.src = url;
+  });
+}
+
+/**
+ * Blob を base64 の Data URL 文字列に変換する
+ * （Firebase Storageは現在Blazeプラン必須のため、圧縮した画像は
+ *   Cloud Storageを使わずFirestoreドキュメントに直接文字列として保存する）
+ */
+function blobToDataURL(blob){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('画像の変換に失敗しました'));
+    reader.readAsDataURL(blob);
   });
 }
 
@@ -690,23 +700,18 @@ async function saveProfile(){
       await avatarPhotoReadyPromise;
     }
 
-    // 写真が新しく選ばれていればFirebase Storageにアップロード
+    // 写真モードの場合は圧縮済みの画像（Data URL文字列）をそのままFirestoreに保存
+    // ※ Firebase Storageは現在Blazeプラン（従量課金）が必須のため、
+    //   小さく圧縮した画像をCloud Storageを使わずFirestoreドキュメントに直接埋め込む方式にしている
     let finalAvatarPhotoUrl = existingAvatarPhotoUrl;
     if (avatarMode === 'photo' && selectedAvatarPhotoFile){
-      btn.textContent = '写真をアップロード中…';
-      try {
-        const ref = storage.ref().child(`avatars/${currentUser.uid}.jpg`);
-        const snap = await ref.put(selectedAvatarPhotoFile, { contentType: 'image/jpeg' });
-        finalAvatarPhotoUrl = await snap.ref.getDownloadURL();
-      } catch (uploadErr) {
-        console.error('アバター写真アップロードエラー:', uploadErr);
-        const code = (uploadErr && uploadErr.code) ? uploadErr.code : '';
-        errEl.textContent = '写真のアップロードに失敗しました： ' + (code || (uploadErr && uploadErr.message) || '不明なエラー') + '（別の写真を試すか、イラストをお使いください）';
+      if (selectedAvatarPhotoFile.length > 900000){
+        errEl.textContent = '写真のデータが大きすぎます。別の写真をお試しください';
         errEl.style.display = 'block';
-        showToast('写真のアップロードに失敗しました');
         btn.disabled = false; btn.textContent = '保存する';
         return;
       }
+      finalAvatarPhotoUrl = selectedAvatarPhotoFile;
     }
     btn.textContent = '保存中…';
     const finalAvatarType = avatarMode;
@@ -893,7 +898,8 @@ const ITEM_TYPES = [
 let selectedCategory = null;
 let selectedItem = null;
 let selectedLocation = null;
-let selectedPhotoFile = null;
+let selectedPhotoFile = null;      // 圧縮済み画像のData URL文字列（未保存）
+let photoReadyPromise = null;      // 圧縮処理の完了待ち用Promise
 let miniMap = null;
 let miniMarker = null;
 const DEFAULT_CENTER = [34.4859, 136.7093];
@@ -945,19 +951,29 @@ function locateMe(){
 function onPhotoSelected(e){
   const file = e.target.files[0];
   if (!file) return;
-  selectedPhotoFile = file;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    document.getElementById('photoPreview').style.backgroundImage = `url(${ev.target.result})`;
-    document.getElementById('photoPlaceholder').style.display = 'none';
-    document.getElementById('photoRedo').style.display = 'inline-flex';
-  };
-  reader.readAsDataURL(file);
+  document.getElementById('photoPlaceholder').style.display = 'none';
+  document.getElementById('photoRedo').style.display = 'inline-flex';
+
+  // 縮小・圧縮したJPEGをbase64のData URLに変換してFirestoreに直接保存する
+  // （Firebase StorageはBlazeプラン必須のため使わず、写真は800px程度に
+  //   圧縮してFirestoreドキュメントへ埋め込む）
+  photoReadyPromise = resizeImageToJpeg(file, 800, 0.75)
+    .then(blob => blobToDataURL(blob))
+    .then(dataUrl => {
+      selectedPhotoFile = dataUrl;
+      document.getElementById('photoPreview').style.backgroundImage = `url(${dataUrl})`;
+    })
+    .catch(err => {
+      console.error('画像の処理に失敗:', err);
+      showToast('画像の読み込みに失敗しました。別の写真をお試しください');
+      resetPhoto();
+    });
 }
 
 function resetPhoto(e){
   if (e) e.stopPropagation();
   selectedPhotoFile = null;
+  photoReadyPromise = null;
   document.getElementById('photoInput').value = '';
   document.getElementById('photoPreview').style.backgroundImage = '';
   document.getElementById('photoPlaceholder').style.display = 'inline';
@@ -985,12 +1001,21 @@ async function submitReport(){
   btn.disabled = true; btn.textContent = '投稿中…';
 
   try {
+    // 写真の圧縮処理がまだ完了していなければ待つ
+    if (photoReadyPromise){
+      btn.textContent = '画像を処理中…';
+      await photoReadyPromise;
+    }
     let photoUrl = null;
     if (selectedPhotoFile){
-      const ref = storage.ref().child(`reports/${currentUser.uid}_${Date.now()}.jpg`);
-      const snap = await ref.put(selectedPhotoFile);
-      photoUrl = await snap.ref.getDownloadURL();
+      if (selectedPhotoFile.length > 900000){
+        showToast('写真のデータが大きすぎます。別の写真をお試しください');
+        btn.disabled = false; btn.textContent = '投稿する';
+        return;
+      }
+      photoUrl = selectedPhotoFile;
     }
+    btn.textContent = '投稿中…';
     await db.collection('reports').add({
       category: selectedCategory,
       itemType: selectedItem,
