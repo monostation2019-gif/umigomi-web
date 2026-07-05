@@ -205,6 +205,15 @@ nav.bottom button.active{color:var(--blue); font-weight:700;}
   background:#FDE7E4; color:var(--red); font-weight:700; font-size:12px;
   font-family:"Noto Sans JP", sans-serif;
 }
+.popup-protect-btn{
+  width:100%; margin-top:10px; border:none; border-radius:10px; padding:11px;
+  background:var(--teal); color:#fff; font-weight:700; font-size:13px;
+  font-family:"Noto Sans JP", sans-serif;
+}
+.detail-status-badge{
+  display:inline-block; font-size:11.5px; font-weight:700; color:#1E9E6B;
+  background:#EAFBF4; border-radius:999px; padding:4px 10px; margin:2px 0 6px;
+}
 
 /* ---------- Detail Sheet（ピンをタップした時にボトムから出るポップアップ） ---------- */
 .detail-header{display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:6px;}
@@ -342,6 +351,9 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 .profile-sub{font-size:12px; color:var(--muted); margin:2px 0 0;}
 .profile-bio{font-size:12.5px; color:var(--ink); margin:6px 0 0; line-height:1.5;}
 .stat-row{display:flex; gap:10px; margin-top:14px;}
+.stat-row-4{gap:6px;}
+.stat-row-4 .stat-box{padding:8px 4px;}
+.stat-row-4 .stat-box b{font-size:16px;}
 .stat-box{flex:1; background:#F3F6FC; border-radius:12px; padding:10px; text-align:center;}
 .stat-box b{display:block; font-size:18px; color:var(--blue);}
 .stat-box span{font-size:11px; color:var(--muted);}
@@ -527,8 +539,9 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
       <label style="color:var(--muted); font-weight:700; font-size:12px;">記録</label>
       <button class="link-btn" id="statsRefreshBtn" onclick="refreshMyStats()">↻ 更新</button>
     </div>
-    <div class="stat-row">
-      <div class="stat-box"><b id="statCount">0</b><span>調査件数</span></div>
+    <div class="stat-row stat-row-4">
+      <div class="stat-box"><b id="statCount">0</b><span>発見数</span></div>
+      <div class="stat-box"><b id="statProtect">0</b><span>保護数</span></div>
       <div class="stat-box"><b id="statPoints">0</b><span>ポイント</span></div>
       <div class="stat-box"><b id="statBadges">0</b><span>バッジ</span></div>
     </div>
@@ -679,6 +692,7 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
     </div>
     <p class="detail-meta" id="detailDate"></p>
     <p class="detail-meta" id="detailArea"></p>
+    <span class="detail-status-badge" id="detailStatus" style="display:none;"></span>
 
     <div class="detail-row">
       <div class="detail-avatar" id="detailAvatar">👤</div>
@@ -711,6 +725,7 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
     </div>
     <div class="stat-row">
       <div class="stat-box"><b id="udCount">0</b><span>発見数</span></div>
+      <div class="stat-box"><b id="udProtect">0</b><span>保護数</span></div>
       <div class="stat-box"><b id="udPoints">0</b><span>ポイント</span></div>
     </div>
   </div>
@@ -851,11 +866,16 @@ function signInApple(){
 }
 
 function loadMyStats(uid){
-  db.collection('reports').where('reportedBy','==',uid).get().then(snap => {
-    const count = snap.size;
-    document.getElementById('statCount').textContent = count;
-    document.getElementById('statPoints').textContent = count * 10;
-    document.getElementById('statBadges').textContent = Math.floor(count / 10);
+  Promise.all([
+    db.collection('reports').where('reportedBy','==',uid).get(),
+    db.collection('reports').where('protectedBy','==',uid).get()
+  ]).then(([foundSnap, protectSnap]) => {
+    const foundCount = foundSnap.size;
+    const protectCount = protectSnap.size;
+    document.getElementById('statCount').textContent = foundCount;
+    document.getElementById('statProtect').textContent = protectCount;
+    document.getElementById('statPoints').textContent = (foundCount + protectCount) * 10;
+    document.getElementById('statBadges').textContent = Math.floor((foundCount + protectCount) / 10);
   }).catch(err => console.error(err));
 }
 
@@ -863,11 +883,16 @@ function refreshMyStats(){
   if (!currentUser) return;
   const btn = document.getElementById('statsRefreshBtn');
   btn.disabled = true; btn.textContent = '更新中…';
-  db.collection('reports').where('reportedBy','==',currentUser.uid).get().then(snap => {
-    const count = snap.size;
-    document.getElementById('statCount').textContent = count;
-    document.getElementById('statPoints').textContent = count * 10;
-    document.getElementById('statBadges').textContent = Math.floor(count / 10);
+  Promise.all([
+    db.collection('reports').where('reportedBy','==',currentUser.uid).get(),
+    db.collection('reports').where('protectedBy','==',currentUser.uid).get()
+  ]).then(([foundSnap, protectSnap]) => {
+    const foundCount = foundSnap.size;
+    const protectCount = protectSnap.size;
+    document.getElementById('statCount').textContent = foundCount;
+    document.getElementById('statProtect').textContent = protectCount;
+    document.getElementById('statPoints').textContent = (foundCount + protectCount) * 10;
+    document.getElementById('statBadges').textContent = Math.floor((foundCount + protectCount) / 10);
     showToast('最新の状態に更新しました');
   }).catch(err => {
     console.error(err);
@@ -884,38 +909,46 @@ function openHistorySheet(){
   listEl.innerHTML = '<p class="ranking-empty">読み込み中…</p>';
   document.getElementById('historySheetBackdrop').classList.add('open');
 
-  db.collection('reports').where('reportedBy','==',currentUser.uid).get()
-    .then(snap => {
-      if (snap.empty){
-        listEl.innerHTML = '<p class="ranking-empty">まだ調査記録がありません。ゴミを見つけたら投稿してみよう！</p>';
-        return;
-      }
-      const docs = [];
-      snap.forEach(doc => docs.push({ id: doc.id, d: doc.data() }));
-      docs.sort((a, b) => {
-        const ta = (a.d.createdAt && a.d.createdAt.toMillis) ? a.d.createdAt.toMillis() : 0;
-        const tb = (b.d.createdAt && b.d.createdAt.toMillis) ? b.d.createdAt.toMillis() : 0;
-        return tb - ta;
-      });
-      const rows = docs.map(({ id, d }) => {
-        const itemDef = findItemType(d.itemType);
-        const emoji = d.emoji || (itemDef && itemDef.emoji) || '🗑️';
-        const date = (d.createdAt && d.createdAt.toDate) ? d.createdAt.toDate().toLocaleDateString('ja-JP') : '';
-        const town = (d.area && d.area.town) ? d.area.town : '';
-        return `<div class="history-row" onclick="openHistoryItem('${id}')">
-          <span class="history-icon">${emoji}</span>
-          <div class="history-info">
-            <div class="t">${escapeHtml(d.itemType || 'ゴミ')}</div>
-            <div class="m">${date}${town ? ' ・ ' + escapeHtml(town) : ''}</div>
-          </div>
-        </div>`;
-      });
-      listEl.innerHTML = rows.join('');
-    })
-    .catch(err => {
-      console.error('履歴取得エラー:', err);
-      listEl.innerHTML = '<p class="ranking-empty">読み込みに失敗しました</p>';
+  Promise.all([
+    db.collection('reports').where('reportedBy','==',currentUser.uid).get(),
+    db.collection('reports').where('protectedBy','==',currentUser.uid).get()
+  ]).then(([foundSnap, protectSnap]) => {
+    const items = [];
+    foundSnap.forEach(doc => items.push({ id: doc.id, d: doc.data(), kind: 'found' }));
+    protectSnap.forEach(doc => items.push({ id: doc.id, d: doc.data(), kind: 'protect' }));
+
+    if (items.length === 0){
+      listEl.innerHTML = '<p class="ranking-empty">まだ調査記録がありません。ゴミを見つけたら投稿してみよう！</p>';
+      return;
+    }
+
+    function timeOf(item){
+      const ts = item.kind === 'found' ? item.d.createdAt : item.d.protectedAt;
+      return (ts && ts.toMillis) ? ts.toMillis() : 0;
+    }
+    items.sort((a, b) => timeOf(b) - timeOf(a));
+
+    const rows = items.map(({ id, d, kind }) => {
+      const itemDef = findItemType(d.itemType);
+      const baseEmoji = d.emoji || (itemDef && itemDef.emoji) || '🗑️';
+      const emoji = kind === 'found' ? baseEmoji : '✅';
+      const ts = kind === 'found' ? d.createdAt : d.protectedAt;
+      const date = (ts && ts.toDate) ? ts.toDate().toLocaleDateString('ja-JP') : '';
+      const town = (d.area && d.area.town) ? d.area.town : '';
+      const kindLabel = kind === 'found' ? '発見' : '保護';
+      return `<div class="history-row" onclick="openHistoryItem('${id}')">
+        <span class="history-icon">${emoji}</span>
+        <div class="history-info">
+          <div class="t">${kindLabel}・${escapeHtml(d.itemType || 'ゴミ')}</div>
+          <div class="m">${date}${town ? ' ・ ' + escapeHtml(town) : ''}</div>
+        </div>
+      </div>`;
     });
+    listEl.innerHTML = rows.join('');
+  }).catch(err => {
+    console.error('履歴取得エラー:', err);
+    listEl.innerHTML = '<p class="ranking-empty">読み込みに失敗しました</p>';
+  });
 }
 function closeHistorySheet(){
   document.getElementById('historySheetBackdrop').classList.remove('open');
@@ -1286,6 +1319,15 @@ function openDetailSheet(d, id){
   }
   document.getElementById('detailReporter').textContent = '投稿者：' + (d.reporterName || '無記名');
 
+  const statusEl = document.getElementById('detailStatus');
+  if (d.status === 'protected'){
+    const protectedDate = (d.protectedAt && d.protectedAt.toDate) ? d.protectedAt.toDate().toLocaleDateString('ja-JP') : '';
+    statusEl.textContent = `✅ 保護済み（${d.protectedByName || '匿名'}さんが確認・${protectedDate}）`;
+    statusEl.style.display = '';
+  } else {
+    statusEl.style.display = 'none';
+  }
+
   const commentBlock = document.getElementById('detailCommentBlock');
   if (d.comment){
     document.getElementById('detailComment').textContent = d.comment;
@@ -1303,10 +1345,16 @@ function openDetailSheet(d, id){
   }
 
   const isOwner = !!(currentUser && d.reportedBy === currentUser.uid);
-  const redoWrap = document.getElementById('detailRedoWrap');
-  redoWrap.innerHTML = isOwner
-    ? `<button class="popup-redo-btn" onclick="redoReport('${id}')">↺ 削除してやり直す</button>`
-    : '';
+  const isProtected = d.status === 'protected';
+  const actionsWrap = document.getElementById('detailRedoWrap');
+  let actionsHtml = '';
+  if (isOwner && !isProtected){
+    actionsHtml += `<button class="popup-redo-btn" onclick="redoReport('${id}')">↺ 削除してやり直す</button>`;
+  }
+  if (!isProtected && currentUser && !isOwner){
+    actionsHtml += `<button class="popup-protect-btn" onclick="protectReport('${id}')">✅ 現地で確認済み（保護する）</button>`;
+  }
+  actionsWrap.innerHTML = actionsHtml;
 
   detailLocation = (d.location) ? { lat: d.location.latitude, lng: d.location.longitude } : null;
 
@@ -1331,6 +1379,7 @@ function renderMarkers(){
   const heatPoints = [];
   allReports.forEach(({ id, d }) => {
     if (!d.location) return;
+    if (d.status === 'protected') return; // 保護済み（回収済み）のピンはホーム地図から除外
     if (activeFilter !== 'all' && d.itemType !== activeFilter) return;
     const lat = d.location.latitude, lng = d.location.longitude;
     heatPoints.push([lat, lng, 0.6]);
@@ -1373,6 +1422,39 @@ async function redoReport(id){
   }
 }
 
+/**
+ * 現地で確認して、ゴミが無くなっていた場合に「保護済み」にする
+ * 保護済みになったピンはホーム地図・ランキングの集計対象から外れ、
+ * 確認した本人にポイントが加算される（自分自身の投稿は保護できない）
+ */
+async function protectReport(id){
+  if (!currentUser){ showToast('ログインすると保護報告ができます'); return; }
+  const target = allReports.find(r => r.id === id);
+  if (target && target.d.reportedBy === currentUser.uid){
+    showToast('自分の投稿は保護できません。他の人が確認するとポイントが入ります');
+    return;
+  }
+  const ok = confirm('現地で確認して、このゴミは無くなっていましたか？\n保護済みにすると、この投稿はホーム画面の地図から消えます。');
+  if (!ok) return;
+  try {
+    await db.collection('reports').doc(id).update({
+      status: 'protected',
+      protectedBy: currentUser.uid,
+      protectedByName: profileNickname || (currentUser.isAnonymous ? 'ゲストユーザー' : '親方ファン'),
+      protectedByAvatarType: existingAvatarType || 'emoji',
+      protectedByAvatarEmoji: selectedAvatar || '👤',
+      protectedByAvatarPhotoUrl: existingAvatarType === 'photo' ? existingAvatarPhotoUrl : null,
+      protectedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    closeDetailSheet();
+    showToast('保護ありがとう！+10pt獲得しました 🎉');
+    if (currentUser) loadMyStats(currentUser.uid);
+  } catch(err){
+    console.error('保護処理エラー:', err);
+    showToast('保護処理に失敗しました。もう一度お試しください');
+  }
+}
+
 /* =========================================================
    ランキング（町別 / 学区別 / ユーザー別）
 ========================================================= */
@@ -1393,6 +1475,20 @@ function isThisMonth(d){
   const now = new Date();
   return ym === (now.getFullYear() * 12 + now.getMonth());
 }
+/**
+ * protectedAtの年月を取得（保護アクション用）
+ */
+function protectedYearMonth(d){
+  if (!d.protectedAt || !d.protectedAt.toDate) return null;
+  const dt = d.protectedAt.toDate();
+  return dt.getFullYear() * 12 + dt.getMonth();
+}
+function isProtectedThisMonth(d){
+  const ym = protectedYearMonth(d);
+  if (ym === null) return false;
+  const now = new Date();
+  return ym === (now.getFullYear() * 12 + now.getMonth());
+}
 function currentMonthLabel(){
   const now = new Date();
   return `${now.getFullYear()}年${now.getMonth()+1}月`;
@@ -1400,24 +1496,39 @@ function currentMonthLabel(){
 
 function computeRanking(tab){
   const counts = new Map();
-  // ランキングは毎月リセット：今月投稿分だけを集計対象にする
-  allReports.filter(({ d }) => isThisMonth(d)).forEach(({ d }) => {
-    if (tab === 'user'){
-      const key = d.reportedBy;
-      if (!key) return;
-      if (!counts.has(key)){
-        counts.set(key, {
-          uid: key,
-          label: d.reporterName || '無記名',
-          count: 0,
-          avatarType: d.reporterAvatarType || 'emoji',
-          avatarEmoji: d.reporterAvatarEmoji || '👤',
-          avatarPhotoUrl: d.reporterAvatarPhotoUrl || null
-        });
+
+  if (tab === 'user'){
+    // ユーザー別ランキングは「発見」と「保護（現地確認）」の両方を今月分だけ合算する
+    allReports.forEach(({ d }) => {
+      if (isThisMonth(d) && d.reportedBy){
+        const key = d.reportedBy;
+        if (!counts.has(key)){
+          counts.set(key, { uid:key, label:'無記名', count:0, foundCount:0, protectCount:0, avatarType:'emoji', avatarEmoji:'👤', avatarPhotoUrl:null });
+        }
+        const item = counts.get(key);
+        item.count++; item.foundCount++;
+        item.label = d.reporterName || item.label;
+        item.avatarType = d.reporterAvatarType || item.avatarType;
+        item.avatarEmoji = d.reporterAvatarEmoji || item.avatarEmoji;
+        if (d.reporterAvatarType === 'photo') item.avatarPhotoUrl = d.reporterAvatarPhotoUrl;
       }
-      counts.get(key).count++;
-      return;
-    }
+      if (isProtectedThisMonth(d) && d.protectedBy){
+        const key = d.protectedBy;
+        if (!counts.has(key)){
+          counts.set(key, { uid:key, label:'無記名', count:0, foundCount:0, protectCount:0, avatarType:'emoji', avatarEmoji:'👤', avatarPhotoUrl:null });
+        }
+        const item = counts.get(key);
+        item.count++; item.protectCount++;
+        item.label = d.protectedByName || item.label;
+        item.avatarType = d.protectedByAvatarType || item.avatarType;
+        item.avatarEmoji = d.protectedByAvatarEmoji || item.avatarEmoji;
+        if (d.protectedByAvatarType === 'photo') item.avatarPhotoUrl = d.protectedByAvatarPhotoUrl;
+      }
+    });
+    return [...counts.values()].sort((a,b) => b.count - a.count);
+  }
+
+  allReports.filter(({ d }) => isThisMonth(d)).forEach(({ d }) => {
     const key = tab === 'town' ? (d.area && d.area.town) : (d.area && d.area.gakku);
     if (!key) return;
     if (!counts.has(key)) counts.set(key, { label:key, count:0 });
@@ -1694,7 +1805,8 @@ function openUserDetail(uid){
     avatarEl.textContent = item.avatarEmoji || '👤';
   }
   document.getElementById('udName').textContent = item.label;
-  document.getElementById('udCount').textContent = item.count;
+  document.getElementById('udCount').textContent = item.foundCount || 0;
+  document.getElementById('udProtect').textContent = item.protectCount || 0;
   document.getElementById('udPoints').textContent = item.count * 10;
 
   const bioBlock = document.getElementById('udBioBlock');
