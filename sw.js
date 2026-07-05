@@ -1,6 +1,5 @@
-// キャッシュ名は「日付+連番」など、更新のたびに必ず変える運用を推奨
-// （変え忘れても下記のネットワーク優先戦略により自動更新は機能します）
-const CACHE_NAME = 'poisute-map-v2';
+// キャッシュ名は更新のたびに必ず変える運用を推奨（変え忘れてもfetch戦略により自動更新は機能します）
+const CACHE_NAME = 'poisute-map-v3';
 const APP_SHELL = [
   './index.html',
   './manifest.json'
@@ -27,10 +26,10 @@ self.addEventListener('fetch', (event) => {
   const isAppShell = APP_SHELL.some((path) => url.endsWith(path.replace('./', '')));
 
   if (isAppShell) {
-    // ネットワーク優先：オンラインなら常に最新のindex.html/manifest.jsonを取得し、
-    // 取得できたらキャッシュも更新しておく。オフライン時のみキャッシュにフォールバック。
+    // ネットワーク優先＋HTTPキャッシュを完全にバイパス（cache:'no-store'）
+    // これで「SW的にはネットワーク優先のつもりが、実はブラウザ手元キャッシュを掴んでいた」を防ぐ
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: 'no-store' })
         .then((response) => {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
