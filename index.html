@@ -544,7 +544,8 @@ let selectedAvatar = '👤';
 
 // avatarMode: 'emoji' or 'photo'（現在編集シート内で選択中の種別）
 let avatarMode = 'emoji';
-let selectedAvatarPhotoFile = null;   // 新しく選んだ写真（未保存）
+let selectedAvatarPhotoFile = null;   // 新しく選んだ写真（未保存・圧縮後Blob）
+let avatarPhotoReadyPromise = null;   // 圧縮処理の完了待ち用Promise
 let existingAvatarType = 'emoji';     // Firestoreに保存済みの種別
 let existingAvatarPhotoUrl = null;    // Firestoreに保存済みの写真URL
 
@@ -571,6 +572,7 @@ function renderAvatarGrid(){
       selectedAvatar = em;
       avatarMode = 'emoji';
       selectedAvatarPhotoFile = null;
+      avatarPhotoReadyPromise = null;
       document.getElementById('avatarPhotoInput').value = '';
       document.getElementById('avatarRemoveBtn').style.display = 'none';
       renderAvatarGrid();
@@ -583,8 +585,9 @@ function renderAvatarGrid(){
 function onAvatarPhotoSelected(e){
   const file = e.target.files[0];
   if (!file) return;
-  selectedAvatarPhotoFile = file;
   avatarMode = 'photo';
+
+  // まずは元画像でプレビューを即表示
   const reader = new FileReader();
   reader.onload = ev => {
     setAvatarDisplay('avatarPreviewInner', 'photo', null, ev.target.result);
@@ -592,11 +595,49 @@ function onAvatarPhotoSelected(e){
     renderAvatarGrid();
   };
   reader.readAsDataURL(file);
+
+  // アップロード用に縮小・圧縮したJPEGを作成しておく
+  // （スマホのカメラ写真は数MBになりがちで、そのままだとアップロードに
+  //   失敗しやすいため、正方形512pxのJPEGに変換して軽量化する）
+  avatarPhotoReadyPromise = resizeImageToJpeg(file, 512, 0.85)
+    .then(blob => { selectedAvatarPhotoFile = blob; })
+    .catch(err => {
+      console.error('画像の圧縮に失敗:', err);
+      // 圧縮に失敗した場合は元ファイルをそのまま使う
+      selectedAvatarPhotoFile = file;
+    });
+}
+
+/**
+ * 画像ファイルを正方形に切り抜き、指定の最大辺サイズにリサイズしてJPEG Blobを返す
+ */
+function resizeImageToJpeg(file, maxSize, quality){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const side = Math.min(img.width, img.height);
+      const sx = (img.width - side) / 2;
+      const sy = (img.height - side) / 2;
+      const outSize = Math.min(maxSize, side);
+      const canvas = document.createElement('canvas');
+      canvas.width = outSize; canvas.height = outSize;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, outSize, outSize);
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob); else reject(new Error('画像の変換に失敗しました'));
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('画像の読み込みに失敗しました')); };
+    img.src = url;
+  });
 }
 
 function removeAvatarPhoto(){
   avatarMode = 'emoji';
   selectedAvatarPhotoFile = null;
+  avatarPhotoReadyPromise = null;
   document.getElementById('avatarPhotoInput').value = '';
   document.getElementById('avatarRemoveBtn').style.display = 'none';
   setAvatarDisplay('avatarPreviewInner', 'emoji', selectedAvatar, null);
@@ -607,6 +648,7 @@ function openProfileSheet(){
   document.getElementById('nameError').style.display = 'none';
   document.getElementById('nameInput').value = profileNickname || '';
   selectedAvatarPhotoFile = null;
+  avatarPhotoReadyPromise = null;
   document.getElementById('avatarPhotoInput').value = '';
   avatarMode = existingAvatarType;
   document.getElementById('avatarRemoveBtn').style.display = (avatarMode === 'photo') ? 'inline-flex' : 'none';
@@ -642,13 +684,31 @@ async function saveProfile(){
     const usernameRef = db.collection('usernames').doc(key);
     const userRef = db.collection('users').doc(currentUser.uid);
 
+    // 写真の圧縮処理がまだ完了していなければ待つ
+    if (avatarPhotoReadyPromise){
+      btn.textContent = '画像を処理中…';
+      await avatarPhotoReadyPromise;
+    }
+
     // 写真が新しく選ばれていればFirebase Storageにアップロード
     let finalAvatarPhotoUrl = existingAvatarPhotoUrl;
     if (avatarMode === 'photo' && selectedAvatarPhotoFile){
-      const ref = storage.ref().child(`avatars/${currentUser.uid}.jpg`);
-      const snap = await ref.put(selectedAvatarPhotoFile);
-      finalAvatarPhotoUrl = await snap.ref.getDownloadURL();
+      btn.textContent = '写真をアップロード中…';
+      try {
+        const ref = storage.ref().child(`avatars/${currentUser.uid}.jpg`);
+        const snap = await ref.put(selectedAvatarPhotoFile, { contentType: 'image/jpeg' });
+        finalAvatarPhotoUrl = await snap.ref.getDownloadURL();
+      } catch (uploadErr) {
+        console.error('アバター写真アップロードエラー:', uploadErr);
+        const code = (uploadErr && uploadErr.code) ? uploadErr.code : '';
+        errEl.textContent = '写真のアップロードに失敗しました： ' + (code || (uploadErr && uploadErr.message) || '不明なエラー') + '（別の写真を試すか、イラストをお使いください）';
+        errEl.style.display = 'block';
+        showToast('写真のアップロードに失敗しました');
+        btn.disabled = false; btn.textContent = '保存する';
+        return;
+      }
     }
+    btn.textContent = '保存中…';
     const finalAvatarType = avatarMode;
     const finalAvatarEmoji = selectedAvatar;
 
