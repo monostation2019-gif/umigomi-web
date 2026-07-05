@@ -419,6 +419,10 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
   </div>
 
   <div class="card">
+    <div class="section-label-row" style="margin-bottom:2px;">
+      <label style="color:var(--muted); font-weight:700; font-size:12px;">記録</label>
+      <button class="link-btn" id="statsRefreshBtn" onclick="refreshMyStats()">↻ 更新</button>
+    </div>
     <div class="stat-row">
       <div class="stat-box"><b id="statCount">0</b><span>調査件数</span></div>
       <div class="stat-box"><b id="statPoints">0</b><span>ポイント</span></div>
@@ -669,6 +673,24 @@ function loadMyStats(uid){
     document.getElementById('statPoints').textContent = count * 10;
     document.getElementById('statBadges').textContent = Math.floor(count / 10);
   }).catch(err => console.error(err));
+}
+
+function refreshMyStats(){
+  if (!currentUser) return;
+  const btn = document.getElementById('statsRefreshBtn');
+  btn.disabled = true; btn.textContent = '更新中…';
+  db.collection('reports').where('reportedBy','==',currentUser.uid).get().then(snap => {
+    const count = snap.size;
+    document.getElementById('statCount').textContent = count;
+    document.getElementById('statPoints').textContent = count * 10;
+    document.getElementById('statBadges').textContent = Math.floor(count / 10);
+    showToast('最新の状態に更新しました');
+  }).catch(err => {
+    console.error(err);
+    showToast('更新に失敗しました。もう一度お試しください');
+  }).finally(() => {
+    btn.disabled = false; btn.textContent = '↻ 更新';
+  });
 }
 
 /* =========================================================
@@ -1086,6 +1108,7 @@ async function redoReport(id){
   try {
     closeDetailSheet();
     await db.collection('reports').doc(id).delete();
+    if (currentUser) loadMyStats(currentUser.uid);
     showToast('投稿を削除しました。続けて投稿してください');
     openSheet();
   } catch(err){
@@ -1447,7 +1470,7 @@ async function submitReport(){
     });
     closeSheet();
     showToast('報告ありがとうございます！');
-    if (!currentUser.isAnonymous) loadMyStats(currentUser.uid);
+    if (currentUser) loadMyStats(currentUser.uid);
   } catch(err){
     console.error(err);
     showToast('投稿に失敗しました。もう一度お試しください');
@@ -1469,6 +1492,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     document.getElementById('view-ranking').classList.toggle('hidden', target !== 'ranking');
     document.getElementById('view-soon').classList.toggle('hidden', target !== 'soon');
     if (target === 'ranking') renderRanking();
+    if (target === 'mypage' && currentUser) loadMyStats(currentUser.uid);
   });
 });
 
