@@ -46,7 +46,14 @@ body{
   background:var(--bg);
   display:flex; flex-direction:column;
   height:100dvh; overflow:hidden;
+  transition:background .25s ease, color .25s ease;
 }
+/* ---------- 背景テーマ（設定から変更可能） ---------- */
+body.theme-black{--bg:#1C1C1E; --ink:#F2F2F5; --muted:#A6A6AC; --line:#3A3A3C;}
+body.theme-gray{--bg:#D9DCE1; --line:#C3C7CE;}
+body.theme-green{--bg:#DCEFDD; --line:#BFE0C2;}
+body.theme-yellow{--bg:#FDF3D0; --line:#F0DFA0;}
+body.theme-blue{--bg:#DCE8FB; --line:#C4D8F5;}
 h1,h2,h3,.brand{font-family:"Zen Kaku Gothic New", sans-serif;}
 
 /* ---------- Header ---------- */
@@ -311,6 +318,25 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
   background:#F3F6FC; color:var(--blue); font-size:15px;
 }
 .avatar-grid{display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin-bottom:18px;}
+.theme-swatch-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:8px;}
+.theme-swatch{
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  border:none; background:none; font-family:"Noto Sans JP", sans-serif;
+}
+.theme-swatch .dot{
+  width:44px; height:44px; border-radius:50%; border:2.5px solid transparent;
+  box-shadow:0 2px 6px rgba(20,30,60,0.15);
+  display:flex; align-items:center; justify-content:center; font-size:16px; color:#fff;
+}
+.theme-swatch.active .dot{border-color:var(--blue); box-shadow:0 0 0 3px #EAF1FF, 0 2px 6px rgba(20,30,60,0.15);}
+.theme-swatch .lb{font-size:11.5px; color:var(--muted); font-weight:700;}
+.theme-swatch.active .lb{color:var(--blue);}
+.theme-swatch .dot.sw-black{background:#1C1C1E;}
+.theme-swatch .dot.sw-gray{background:#9AA1AC;}
+.theme-swatch .dot.sw-green{background:#4CAF6D;}
+.theme-swatch .dot.sw-yellow{background:#F0C93D;}
+.theme-swatch .dot.sw-blue{background:#2F6FED;}
+.theme-swatch .dot.sw-reset{background:#F3F6FC; color:var(--muted); font-size:18px;}
 .avatar-cell{
   aspect-ratio:1; border-radius:50%; background:#EFF2F8; border:2.5px solid transparent;
   display:flex; align-items:center; justify-content:center; font-size:19px;
@@ -363,6 +389,8 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 }
 .list-row:last-child{border-bottom:none;}
 .list-row .l{display:flex; align-items:center; gap:10px;}
+.list-row-danger .l{color:var(--red); font-weight:700;}
+.list-row-danger span:last-child{color:var(--red);}
 .soon{
   display:flex; flex-direction:column; align-items:center; justify-content:center; height:70%;
   color:var(--muted); text-align:center; padding:0 30px;
@@ -575,16 +603,10 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
   </div>
 
   <div class="card" id="authCard">
-    <div class="list-row" onclick="signInGoogle()">
-      <div class="l">🔑 <span>Googleでログイン</span></div><span>›</span>
-    </div>
-    <div class="list-row" onclick="signInApple()">
-      <div class="l">🍎 <span>Appleでログイン</span></div><span>›</span>
-    </div>
     <div class="list-row" onclick="openHistorySheet()">
       <div class="l">📖 <span>調査履歴</span></div><span>›</span>
     </div>
-    <div class="list-row" onclick="showToast('近日公開予定です')">
+    <div class="list-row" onclick="openSettingsSheet()">
       <div class="l">⚙️ <span>設定</span></div><span>›</span>
     </div>
   </div>
@@ -700,6 +722,56 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 
     <button class="btn-primary" id="profileSaveBtn" onclick="saveProfile()">保存する</button>
     <button class="btn-ghost" onclick="closeProfileSheet()">キャンセル</button>
+  </div>
+</div>
+
+<!-- 設定シート -->
+<div class="sheet-backdrop" id="settingsSheetBackdrop">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h3>設定</h3>
+    <p class="sub">アカウント連携やアプリの見た目を変更できます</p>
+
+    <label class="section-label">アカウント連携</label>
+    <div class="card" style="margin:0 0 18px; padding:2px 12px;">
+      <div class="list-row" onclick="signInGoogle()">
+        <div class="l">🔑 <span>Googleでログイン</span></div><span>›</span>
+      </div>
+      <div class="list-row" onclick="signInApple()">
+        <div class="l">🍎 <span>Appleでログイン</span></div><span>›</span>
+      </div>
+    </div>
+
+    <label class="section-label">背景色</label>
+    <div class="theme-swatch-grid" id="themeSwatchGrid">
+      <button type="button" class="theme-swatch" data-theme="black" onclick="setBgTheme('black')">
+        <span class="dot sw-black"></span><span class="lb">黒</span>
+      </button>
+      <button type="button" class="theme-swatch" data-theme="gray" onclick="setBgTheme('gray')">
+        <span class="dot sw-gray"></span><span class="lb">灰色</span>
+      </button>
+      <button type="button" class="theme-swatch" data-theme="green" onclick="setBgTheme('green')">
+        <span class="dot sw-green"></span><span class="lb">緑</span>
+      </button>
+      <button type="button" class="theme-swatch" data-theme="yellow" onclick="setBgTheme('yellow')">
+        <span class="dot sw-yellow"></span><span class="lb">黄色</span>
+      </button>
+      <button type="button" class="theme-swatch" data-theme="blue" onclick="setBgTheme('blue')">
+        <span class="dot sw-blue"></span><span class="lb">青色</span>
+      </button>
+      <button type="button" class="theme-swatch" data-theme="default" onclick="setBgTheme('default')">
+        <span class="dot sw-reset">↺</span><span class="lb">元に戻す</span>
+      </button>
+    </div>
+
+    <label class="section-label" style="margin-top:6px;">アカウント</label>
+    <div class="card" style="margin:0 0 6px; padding:2px 12px;">
+      <div class="list-row list-row-danger" onclick="logoutUser()">
+        <div class="l">🚪 <span>ログアウト</span></div><span>›</span>
+      </div>
+    </div>
+
+    <button class="btn-ghost" onclick="closeSettingsSheet()" style="margin-top:8px;">閉じる</button>
   </div>
 </div>
 
@@ -1129,6 +1201,70 @@ function openProfileSheet(){
   document.getElementById('profileSheetBackdrop').classList.add('open');
 }
 function closeProfileSheet(){ document.getElementById('profileSheetBackdrop').classList.remove('open'); }
+
+/* =========================================================
+   設定シート（アカウント連携・背景色）
+========================================================= */
+const BG_THEME_KEY = 'mm_bg_theme';
+
+function openSettingsSheet(){
+  updateThemeSwatchActive();
+  document.getElementById('settingsSheetBackdrop').classList.add('open');
+}
+function closeSettingsSheet(){
+  document.getElementById('settingsSheetBackdrop').classList.remove('open');
+}
+
+function logoutUser(){
+  const isAnon = currentUser && currentUser.isAnonymous;
+  const msg = isAnon
+    ? 'ゲストとして利用中です。ログアウトすると今の記録に戻れなくなる可能性があります。ログアウトしますか？'
+    : 'ログアウトしますか？';
+  if (!confirm(msg)) return;
+
+  auth.signOut()
+    .then(() => { closeSettingsSheet(); })
+    .catch(err => {
+      console.error('ログアウトエラー:', err);
+      showToast('ログアウトに失敗しました');
+    });
+}
+
+function applyBgTheme(theme){
+  document.body.classList.remove('theme-black', 'theme-gray', 'theme-green', 'theme-yellow', 'theme-blue');
+  if (theme && theme !== 'default'){
+    document.body.classList.add('theme-' + theme);
+  }
+}
+
+function setBgTheme(theme){
+  applyBgTheme(theme);
+  try {
+    if (theme === 'default'){
+      localStorage.removeItem(BG_THEME_KEY);
+    } else {
+      localStorage.setItem(BG_THEME_KEY, theme);
+    }
+  } catch(err){ console.warn('背景色の保存に失敗しました:', err); }
+  updateThemeSwatchActive();
+  showToast(theme === 'default' ? '背景色を元に戻しました' : '背景色を変更しました');
+}
+
+function updateThemeSwatchActive(){
+  let saved = 'default';
+  try { saved = localStorage.getItem(BG_THEME_KEY) || 'default'; } catch(err){}
+  document.querySelectorAll('#themeSwatchGrid .theme-swatch').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.theme === saved);
+  });
+}
+
+// 起動時に保存済みの背景色を復元
+(function initSavedBgTheme(){
+  try {
+    const saved = localStorage.getItem(BG_THEME_KEY);
+    if (saved) applyBgTheme(saved);
+  } catch(err){ console.warn('背景色の読み込みに失敗しました:', err); }
+})();
 
 function normalizeName(name){
   return name.trim().toLowerCase().replace(/\s+/g, '');
