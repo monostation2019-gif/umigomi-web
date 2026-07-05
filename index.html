@@ -327,6 +327,7 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 }
 .profile-name{font-weight:700; font-size:16px; margin:0;}
 .profile-sub{font-size:12px; color:var(--muted); margin:2px 0 0;}
+.profile-bio{font-size:12.5px; color:var(--ink); margin:6px 0 0; line-height:1.5;}
 .stat-row{display:flex; gap:10px; margin-top:14px;}
 .stat-box{flex:1; background:#F3F6FC; border-radius:12px; padding:10px; text-align:center;}
 .stat-box b{display:block; font-size:18px; color:var(--blue);}
@@ -373,6 +374,18 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
   background:#F3F6FC; color:var(--blue); font-weight:700; font-size:13px; font-family:"Noto Sans JP", sans-serif;
 }
 .ranking-empty{font-size:13px; color:var(--muted); text-align:center; padding:30px 0;}
+
+/* ---------- 調査履歴リスト ---------- */
+.history-row{display:flex; align-items:center; gap:10px; padding:12px 2px; border-bottom:1px solid var(--line);}
+.history-row:last-child{border-bottom:none;}
+.history-icon{
+  width:38px; height:38px; border-radius:50%; background:#EFF2F8; flex:none;
+  display:flex; align-items:center; justify-content:center; font-size:18px;
+}
+.history-info{flex:1; min-width:0;}
+.history-info .t{font-size:14px; font-weight:700; color:var(--ink);}
+.history-info .m{font-size:11.5px; color:var(--muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.rank-row.clickable{cursor:pointer;}
 </style>
 </head>
 <body>
@@ -414,6 +427,7 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
     <div style="flex:1; min-width:0;">
       <p class="profile-name" id="profileName">ゲストユーザー</p>
       <p class="profile-sub" id="profileSub">ログインすると記録が消えません</p>
+      <p class="profile-bio" id="profileBio" style="display:none;"></p>
     </div>
     <button class="edit-btn" onclick="openProfileSheet()" title="プロフィールを編集">✎</button>
   </div>
@@ -437,7 +451,7 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
     <div class="list-row" onclick="signInApple()">
       <div class="l">🍎 <span>Appleでログイン</span></div><span>›</span>
     </div>
-    <div class="list-row" onclick="showToast('近日公開予定です')">
+    <div class="list-row" onclick="openHistorySheet()">
       <div class="l">📖 <span>調査履歴</span></div><span>›</span>
     </div>
     <div class="list-row" onclick="showToast('近日公開予定です')">
@@ -540,6 +554,9 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
     <input type="text" id="nameInput" class="text-input" placeholder="ニックネームを入力（12文字まで）" maxlength="12">
     <p class="field-error" id="nameError"></p>
 
+    <label class="section-label">自己紹介</label>
+    <textarea class="text-input" id="bioInput" rows="3" maxlength="80" placeholder="自己紹介を書いてみよう（任意）"></textarea>
+
     <button class="btn-primary" id="profileSaveBtn" onclick="saveProfile()">保存する</button>
     <button class="btn-ghost" onclick="closeProfileSheet()">キャンセル</button>
   </div>
@@ -570,6 +587,37 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 
     <div id="detailRedoWrap"></div>
     <button class="btn-primary detail-nav-btn" id="detailNavBtn" onclick="navigateToDetail()">🧭 ここへナビ</button>
+  </div>
+</div>
+
+<!-- ランキング：ユーザー詳細シート -->
+<div class="sheet-backdrop" id="userDetailSheetBackdrop" onclick="if(event.target===this) closeUserDetailSheet()">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="detail-header">
+      <div class="detail-title"><span class="detail-avatar" id="udAvatar">👤</span><span class="lb" id="udName">名前</span></div>
+      <button class="detail-close" onclick="closeUserDetailSheet()">✕</button>
+    </div>
+    <div class="detail-comment-block" id="udBioBlock" style="display:none;">
+      <label>自己紹介</label>
+      <p id="udBio"></p>
+    </div>
+    <div class="stat-row">
+      <div class="stat-box"><b id="udCount">0</b><span>発見数</span></div>
+      <div class="stat-box"><b id="udPoints">0</b><span>ポイント</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- マイページ：調査履歴シート -->
+<div class="sheet-backdrop" id="historySheetBackdrop" onclick="if(event.target===this) closeHistorySheet()">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="detail-header">
+      <div class="detail-title"><span class="lb">調査履歴</span></div>
+      <button class="detail-close" onclick="closeHistorySheet()">✕</button>
+    </div>
+    <div id="historyList"></div>
   </div>
 </div>
 
@@ -611,6 +659,8 @@ function renderProfile(user){
   selectedAvatar = isAnon ? "👤" : "🧑";
   existingAvatarType = 'emoji';
   existingAvatarPhotoUrl = null;
+  profileBio = null;
+  updateProfileBioDisplay();
   setAvatarDisplay('avatarInitial', 'emoji', selectedAvatar, null);
 }
 
@@ -625,6 +675,8 @@ function loadUserProfile(uid){
       if (d.avatar) selectedAvatar = d.avatar;
       existingAvatarType = d.avatarType || 'emoji';
       existingAvatarPhotoUrl = d.avatarPhotoUrl || null;
+      profileBio = d.bio || null;
+      updateProfileBioDisplay();
       setAvatarDisplay('avatarInitial', existingAvatarType, selectedAvatar, existingAvatarPhotoUrl);
     }
   }).catch(err => console.error('プロフィール取得エラー:', err));
@@ -693,11 +745,66 @@ function refreshMyStats(){
   });
 }
 
+/* ---- マイページ：調査履歴シート ---- */
+function openHistorySheet(){
+  if (!currentUser){ showToast('ログインすると履歴を確認できます'); return; }
+  const listEl = document.getElementById('historyList');
+  listEl.innerHTML = '<p class="ranking-empty">読み込み中…</p>';
+  document.getElementById('historySheetBackdrop').classList.add('open');
+
+  db.collection('reports').where('reportedBy','==',currentUser.uid).get()
+    .then(snap => {
+      if (snap.empty){
+        listEl.innerHTML = '<p class="ranking-empty">まだ調査記録がありません。ゴミを見つけたら投稿してみよう！</p>';
+        return;
+      }
+      const docs = [];
+      snap.forEach(doc => docs.push({ id: doc.id, d: doc.data() }));
+      docs.sort((a, b) => {
+        const ta = (a.d.createdAt && a.d.createdAt.toMillis) ? a.d.createdAt.toMillis() : 0;
+        const tb = (b.d.createdAt && b.d.createdAt.toMillis) ? b.d.createdAt.toMillis() : 0;
+        return tb - ta;
+      });
+      const rows = docs.map(({ id, d }) => {
+        const itemDef = findItemType(d.itemType);
+        const emoji = d.emoji || (itemDef && itemDef.emoji) || '🗑️';
+        const date = (d.createdAt && d.createdAt.toDate) ? d.createdAt.toDate().toLocaleDateString('ja-JP') : '';
+        const town = (d.area && d.area.town) ? d.area.town : '';
+        return `<div class="history-row" onclick="openHistoryItem('${id}')">
+          <span class="history-icon">${emoji}</span>
+          <div class="history-info">
+            <div class="t">${escapeHtml(d.itemType || 'ゴミ')}</div>
+            <div class="m">${date}${town ? ' ・ ' + escapeHtml(town) : ''}</div>
+          </div>
+        </div>`;
+      });
+      listEl.innerHTML = rows.join('');
+    })
+    .catch(err => {
+      console.error('履歴取得エラー:', err);
+      listEl.innerHTML = '<p class="ranking-empty">読み込みに失敗しました</p>';
+    });
+}
+function closeHistorySheet(){
+  document.getElementById('historySheetBackdrop').classList.remove('open');
+}
+function openHistoryItem(id){
+  db.collection('reports').doc(id).get().then(doc => {
+    if (!doc.exists){ showToast('この投稿は見つかりませんでした'); return; }
+    closeHistorySheet();
+    openDetailSheet(doc.data(), doc.id);
+  }).catch(err => {
+    console.error('履歴詳細取得エラー:', err);
+    showToast('読み込みに失敗しました');
+  });
+}
+
 /* =========================================================
    プロフィール編集（ニックネーム・アイコン / 重複防止つき）
 ========================================================= */
 const AVATAR_OPTIONS = ['👤','🧑','🧑‍🌾','🧑‍🔧','🧑‍🚀','🧑‍🎨','👩','👨','🐢','🐟','🦀','🐳','🌿','⚓','🏝️','🦭'];
 let profileNickname = null;
+let profileBio = null;
 let selectedAvatar = '👤';
 
 // avatarMode: 'emoji' or 'photo'（現在編集シート内で選択中の種別）
@@ -716,6 +823,16 @@ function setAvatarDisplay(elId, type, emoji, photoUrl){
   } else {
     el.style.backgroundImage = '';
     el.textContent = emoji || '👤';
+  }
+}
+
+function updateProfileBioDisplay(){
+  const el = document.getElementById('profileBio');
+  if (profileBio && profileBio.trim()){
+    el.textContent = profileBio;
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
   }
 }
 
@@ -815,6 +932,7 @@ function removeAvatarPhoto(){
 function openProfileSheet(){
   document.getElementById('nameError').style.display = 'none';
   document.getElementById('nameInput').value = profileNickname || '';
+  document.getElementById('bioInput').value = profileBio || '';
   selectedAvatarPhotoFile = null;
   avatarPhotoReadyPromise = null;
   document.getElementById('avatarPhotoInput').value = '';
@@ -838,6 +956,7 @@ async function saveProfile(){
   }
   const input = document.getElementById('nameInput');
   const raw = input.value.trim();
+  const bioRaw = document.getElementById('bioInput').value.trim();
   const errEl = document.getElementById('nameError');
   errEl.style.display = 'none';
 
@@ -891,11 +1010,14 @@ async function saveProfile(){
         nameKey: key,
         avatar: finalAvatarEmoji,
         avatarType: finalAvatarType,
-        avatarPhotoUrl: finalAvatarType === 'photo' ? finalAvatarPhotoUrl : null
+        avatarPhotoUrl: finalAvatarType === 'photo' ? finalAvatarPhotoUrl : null,
+        bio: bioRaw
       }, { merge: true });
     });
 
     profileNickname = raw;
+    profileBio = bioRaw;
+    updateProfileBioDisplay();
     existingAvatarType = finalAvatarType;
     existingAvatarPhotoUrl = finalAvatarType === 'photo' ? finalAvatarPhotoUrl : null;
     document.getElementById('profileName').textContent = raw;
@@ -1131,6 +1253,7 @@ function computeRanking(tab){
       if (!key) return;
       if (!counts.has(key)){
         counts.set(key, {
+          uid: key,
           label: d.reporterName || '無記名',
           count: 0,
           avatarType: d.reporterAvatarType || 'emoji',
@@ -1179,8 +1302,10 @@ function renderRanking(){
         : `<span class="rank-avatar">${item.avatarEmoji}</span>`;
     }
     const valueLabel = rankingTab === 'user' ? `${item.count * 10}pt` : `${item.count}件`;
+    const rowClass = rankingTab === 'user' ? 'rank-row clickable' : 'rank-row';
+    const rowClick = rankingTab === 'user' ? ` onclick="openUserDetail('${item.uid}')"` : '';
 
-    rows.push(`<div class="rank-row">
+    rows.push(`<div class="${rowClass}"${rowClick}>
       ${rankBadge}${iconHtml}
       <span class="rank-label">${escapeHtml(item.label)}</span>
       <span class="rank-value">${valueLabel}</span>
@@ -1201,6 +1326,42 @@ function setRankingTab(tab, btnEl){
 function expandRanking(){
   rankingExpanded = true;
   renderRanking();
+}
+
+/* ---- ランキング：ユーザー詳細シート ---- */
+function openUserDetail(uid){
+  const data = computeRanking('user');
+  const item = data.find(it => it.uid === uid);
+  if (!item) return;
+
+  const avatarEl = document.getElementById('udAvatar');
+  if (item.avatarType === 'photo' && item.avatarPhotoUrl){
+    avatarEl.style.backgroundImage = `url(${item.avatarPhotoUrl})`;
+    avatarEl.textContent = '';
+  } else {
+    avatarEl.style.backgroundImage = '';
+    avatarEl.textContent = item.avatarEmoji || '👤';
+  }
+  document.getElementById('udName').textContent = item.label;
+  document.getElementById('udCount').textContent = item.count;
+  document.getElementById('udPoints').textContent = item.count * 10;
+
+  const bioBlock = document.getElementById('udBioBlock');
+  const bioEl = document.getElementById('udBio');
+  bioBlock.style.display = 'none';
+  bioEl.textContent = '';
+
+  document.getElementById('userDetailSheetBackdrop').classList.add('open');
+
+  db.collection('users').doc(uid).get().then(doc => {
+    if (doc.exists && doc.data().bio){
+      bioEl.textContent = doc.data().bio;
+      bioBlock.style.display = '';
+    }
+  }).catch(err => console.error('ユーザー情報取得エラー:', err));
+}
+function closeUserDetailSheet(){
+  document.getElementById('userDetailSheetBackdrop').classList.remove('open');
 }
 
 /* =========================================================
