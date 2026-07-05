@@ -312,6 +312,37 @@ nav.bottom button.active{color:var(--blue); font-weight:700;}
   color:var(--muted); text-align:center; padding:0 30px;
 }
 .soon .em{font-size:40px; margin-bottom:10px;}
+
+/* ---------- ランキング ---------- */
+.rank-tabs{
+  display:flex; gap:6px; background:#EEF2F9; border-radius:12px; padding:4px; margin-bottom:14px;
+}
+.rank-tab{
+  flex:1; border:none; background:none; border-radius:9px; padding:9px 4px;
+  font-size:12.5px; font-weight:700; color:var(--muted); font-family:"Noto Sans JP", sans-serif;
+}
+.rank-tab.active{background:var(--blue); color:#fff; box-shadow:0 3px 8px rgba(47,111,237,0.35);}
+.rank-row{
+  display:flex; align-items:center; gap:10px; padding:11px 2px; border-bottom:1px solid var(--line);
+}
+.rank-row:last-child{border-bottom:none;}
+.rank-medal{font-size:20px; width:26px; text-align:center; flex:none;}
+.rank-num{font-size:13px; font-weight:700; color:var(--muted); width:26px; text-align:center; flex:none;}
+.rank-avatar{
+  width:32px; height:32px; border-radius:50%; background:#EFF2F8; flex:none;
+  display:flex; align-items:center; justify-content:center; font-size:16px;
+  background-size:cover; background-position:center;
+}
+.rank-label{
+  flex:1; font-size:14px; font-weight:700; color:var(--ink); min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.rank-value{font-size:14px; font-weight:900; color:var(--blue); flex:none;}
+.ranking-more-btn{
+  width:100%; margin-top:12px; padding:12px; border:none; border-radius:999px;
+  background:#F3F6FC; color:var(--blue); font-weight:700; font-size:13px; font-family:"Noto Sans JP", sans-serif;
+}
+.ranking-empty{font-size:13px; color:var(--muted); text-align:center; padding:30px 0;}
 </style>
 </head>
 <body>
@@ -381,7 +412,22 @@ nav.bottom button.active{color:var(--blue); font-weight:700;}
   </div>
 </div>
 
-<!-- 近日公開 ビュー(ランキング・タイムライン共通) -->
+<!-- ランキング ビュー -->
+<div class="view hidden" id="view-ranking">
+  <div class="view-header"><h2>ランキング</h2><p>町別・学区別・ユーザー別の活躍を表示</p></div>
+
+  <div class="card">
+    <div class="rank-tabs">
+      <button type="button" class="rank-tab active" onclick="setRankingTab('town', this)">町別</button>
+      <button type="button" class="rank-tab" onclick="setRankingTab('gakku', this)">学区別</button>
+      <button type="button" class="rank-tab" onclick="setRankingTab('user', this)">ユーザー別</button>
+    </div>
+    <div id="rankingList"></div>
+    <button type="button" class="ranking-more-btn" id="rankingMoreBtn" onclick="expandRanking()" style="display:none;">もっと見る</button>
+  </div>
+</div>
+
+<!-- 近日公開 ビュー(タイムライン用) -->
 <div class="view hidden" id="view-soon">
   <div class="soon">
     <div class="em">🚧</div>
@@ -395,7 +441,7 @@ nav.bottom button.active{color:var(--blue); font-weight:700;}
   <button class="nav-btn active" data-view="map"><span class="ic">🏠</span>ホーム</button>
   <button class="nav-btn" data-view="soon"><span class="ic">📈</span>タイムライン</button>
   <button class="nav-report" onclick="openSheet()"><span class="ic-report">＋</span><span class="rlabel">投稿</span></button>
-  <button class="nav-btn" data-view="soon"><span class="ic">🏆</span>ランキング</button>
+  <button class="nav-btn" data-view="ranking"><span class="ic">🏆</span>ランキング</button>
   <button class="nav-btn" data-view="mypage"><span class="ic">🙋</span>マイページ</button>
 </nav>
 
@@ -915,6 +961,7 @@ function renderMarkers(){
   });
   if (heatLayer) map.removeLayer(heatLayer);
   heatLayer = L.heatLayer(heatPoints, { radius:32, blur:24, maxZoom:16 }).addTo(map);
+  renderRanking();
 }
 
 function loadReports(){
@@ -945,6 +992,92 @@ async function redoReport(id){
 }
 
 /* =========================================================
+   ランキング（町別 / 学区別 / ユーザー別）
+========================================================= */
+let rankingTab = 'town';       // 'town' | 'gakku' | 'user'
+let rankingExpanded = false;
+
+function computeRanking(tab){
+  const counts = new Map();
+  allReports.forEach(({ d }) => {
+    if (tab === 'user'){
+      const key = d.reportedBy;
+      if (!key) return;
+      if (!counts.has(key)){
+        counts.set(key, {
+          label: d.reporterName || '無記名',
+          count: 0,
+          avatarType: d.reporterAvatarType || 'emoji',
+          avatarEmoji: d.reporterAvatarEmoji || '👤',
+          avatarPhotoUrl: d.reporterAvatarPhotoUrl || null
+        });
+      }
+      counts.get(key).count++;
+      return;
+    }
+    const key = tab === 'town' ? (d.area && d.area.town) : (d.area && d.area.gakku);
+    if (!key) return;
+    if (!counts.has(key)) counts.set(key, { label:key, count:0 });
+    counts.get(key).count++;
+  });
+  return [...counts.values()].sort((a,b) => b.count - a.count);
+}
+
+function renderRanking(){
+  const list = document.getElementById('rankingList');
+  const moreBtn = document.getElementById('rankingMoreBtn');
+  if (!list || !moreBtn) return;
+
+  const data = computeRanking(rankingTab);
+  if (data.length === 0){
+    list.innerHTML = `<p class="ranking-empty">まだデータがありません。投稿が集まると表示されます</p>`;
+    moreBtn.style.display = 'none';
+    return;
+  }
+
+  const showCount = rankingExpanded ? data.length : Math.min(10, data.length);
+  const rows = [];
+  for (let i=0; i<showCount; i++){
+    const item = data[i];
+    const rank = i+1;
+    let rankBadge;
+    if (rank === 1) rankBadge = `<span class="rank-medal">🥇</span>`;
+    else if (rank === 2) rankBadge = `<span class="rank-medal">🥈</span>`;
+    else if (rank === 3) rankBadge = `<span class="rank-medal">🥉</span>`;
+    else rankBadge = `<span class="rank-num">${rank}位</span>`;
+
+    let iconHtml = '';
+    if (rankingTab === 'user'){
+      iconHtml = (item.avatarType === 'photo' && item.avatarPhotoUrl)
+        ? `<span class="rank-avatar" style="background-image:url(${item.avatarPhotoUrl})"></span>`
+        : `<span class="rank-avatar">${item.avatarEmoji}</span>`;
+    }
+    const valueLabel = rankingTab === 'user' ? `${item.count * 10}pt` : `${item.count}件`;
+
+    rows.push(`<div class="rank-row">
+      ${rankBadge}${iconHtml}
+      <span class="rank-label">${escapeHtml(item.label)}</span>
+      <span class="rank-value">${valueLabel}</span>
+    </div>`);
+  }
+  list.innerHTML = rows.join('');
+  moreBtn.style.display = (!rankingExpanded && data.length > 10) ? 'block' : 'none';
+}
+
+function setRankingTab(tab, btnEl){
+  rankingTab = tab;
+  rankingExpanded = false;
+  document.querySelectorAll('.rank-tab').forEach(b => b.classList.remove('active'));
+  btnEl.classList.add('active');
+  renderRanking();
+}
+
+function expandRanking(){
+  rankingExpanded = true;
+  renderRanking();
+}
+
+/* =========================================================
    報告シート
 ========================================================= */
 const ITEM_TYPES = [
@@ -966,6 +1099,58 @@ const ITEM_TYPES = [
   { cat:'海ごみ', label:'フロート', emoji:'🛟' },
   { cat:'ポイ捨て', label:'その他', emoji:'❔' },
 ];
+
+/* =========================================================
+   位置情報 → 町名・学区の自動判定
+   （国土地理院の逆ジオコーディングAPI・無料・APIキー不要）
+========================================================= */
+async function reverseGeocodeTown(lat, lng){
+  try {
+    const url = `https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${lat}&lon=${lng}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const info = data && data.results;
+    return (info && info.lv01Nm) ? info.lv01Nm : null;
+  } catch(err){
+    console.warn('町名の自動取得に失敗しました:', err);
+    return null;
+  }
+}
+
+// 伊勢市が公表している通学区域（小学校区）をもとにした簡易対応表
+// ※一部の町丁目は複数校区にまたがるため、代表的な校区に簡略化しています
+const GAKKU_MAP = [
+  ['宇治館町','進修小学校区'], ['宇治今在家町','進修小学校区'], ['宇治中之切町','進修小学校区'], ['宇治浦田','進修小学校区'],
+  ['桜木町','修道小学校区'], ['中之町','修道小学校区'], ['古市町','修道小学校区'], ['久世戸町','修道小学校区'], ['倭町','修道小学校区'],
+  ['河崎','有緝小学校区'], ['船江','有緝小学校区'], ['神久','有緝小学校区'],
+  ['宮町','早修小学校区'], ['常磐','早修小学校区'], ['浦口','早修小学校区'],
+  ['二俣','中島小学校区'], ['辻久留','中島小学校区'], ['中島','中島小学校区'], ['宮川','中島小学校区'],
+  ['尾上町','明倫小学校区'], ['岡本','明倫小学校区'], ['岩渕','明倫小学校区'], ['吹上','明倫小学校区'], ['豊川町','明倫小学校区'],
+  ['本町','厚生小学校区'], ['宮後','厚生小学校区'], ['一之木','厚生小学校区'], ['一志町','厚生小学校区'], ['八日市場町','厚生小学校区'], ['大世古','厚生小学校区'], ['曽祢','厚生小学校区'],
+  ['黒瀬町','浜郷小学校区'], ['通町','浜郷小学校区'], ['一色町','浜郷小学校区'], ['田尻町','浜郷小学校区'],
+  ['大倉町','佐八小学校区'], ['佐八町','佐八小学校区'],
+  ['藤里町','宮山小学校区'], ['旭町','宮山小学校区'], ['前山町','宮山小学校区'],
+  ['東豊浜町','豊浜東小学校区'], ['樫原町','豊浜東小学校区'],
+  ['西豊浜町','豊浜西小学校区'], ['植山町','豊浜西小学校区'],
+  ['有滝町','北浜小学校区'], ['村松町','北浜小学校区'],
+  ['東大淀町','東大淀小学校区'], ['柏町','東大淀小学校区'],
+  ['上地町','城田小学校区'], ['粟野町','城田小学校区'], ['中須町','城田小学校区'], ['川端町','城田小学校区'],
+  ['一宇田町','四郷小学校区'], ['朝熊町','四郷小学校区'], ['鹿海町','四郷小学校区'], ['楠部町','四郷小学校区'], ['中村町','四郷小学校区'],
+  ['上野町','上野小学校区'], ['円座町','上野小学校区'], ['神薗町','上野小学校区'], ['横輪町','上野小学校区'], ['矢持町','上野小学校区'], ['津村町','上野小学校区'],
+  ['小俣町元町','小俣小学校区'], ['小俣町本町','小俣小学校区'], ['小俣町宮前','小俣小学校区'], ['小俣町相合','小俣小学校区'],
+  ['小俣町明野','明野小学校区'], ['小俣町湯田','明野小学校区'], ['小俣町新村','明野小学校区'],
+  ['御薗町','御薗小学校区'], ['磯町','御薗小学校区'],
+  ['二見町','二見浦小学校区'],
+  ['神社港','みなと小学校区'], ['竹ヶ鼻町','みなと小学校区'], ['小木町','みなと小学校区'], ['馬瀬町','みなと小学校区'], ['下野町','みなと小学校区'], ['大湊町','みなと小学校区'],
+];
+const GAKKU_MAP_SORTED = [...GAKKU_MAP].sort((a,b) => b[0].length - a[0].length);
+
+function mapTownToGakku(town){
+  if (!town) return null;
+  const hit = GAKKU_MAP_SORTED.find(([prefix]) => town.startsWith(prefix));
+  return hit ? hit[1] : null;
+}
 
 function renderFilterBar(){
   const bar = document.getElementById('filterBar');
@@ -1125,18 +1310,32 @@ async function submitReport(){
       }
       photoUrl = selectedPhotoFile;
     }
+
+    // 位置情報から町名・学区を自動判定（取得できなくても投稿は続行する）
+    btn.textContent = '場所を確認中…';
+    const area = {};
+    const townName = await reverseGeocodeTown(selectedLocation.lat, selectedLocation.lng);
+    if (townName){
+      area.town = townName;
+      const gakku = mapTownToGakku(townName);
+      if (gakku) area.gakku = gakku;
+    }
+
     btn.textContent = '投稿中…';
     await db.collection('reports').add({
       category: selectedCategory,
       itemType: selectedItem,
       emoji: selectedEmoji,
       location: new firebase.firestore.GeoPoint(selectedLocation.lat, selectedLocation.lng),
-      area: {},
+      area: area,
       photos: photoUrl ? [photoUrl] : [],
       confidence: '未確認',
       confirmCount: 0,
       reportedBy: currentUser.uid,
       reporterName: profileNickname || '無記名',
+      reporterAvatarType: existingAvatarType || 'emoji',
+      reporterAvatarEmoji: selectedAvatar || '👤',
+      reporterAvatarPhotoUrl: existingAvatarType === 'photo' ? existingAvatarPhotoUrl : null,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       status: 'active'
     });
@@ -1161,7 +1360,9 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     const target = btn.dataset.view;
     document.getElementById('map-wrap').classList.toggle('hidden', target !== 'map');
     document.getElementById('view-mypage').classList.toggle('hidden', target !== 'mypage');
+    document.getElementById('view-ranking').classList.toggle('hidden', target !== 'ranking');
     document.getElementById('view-soon').classList.toggle('hidden', target !== 'soon');
+    if (target === 'ranking') renderRanking();
   });
 });
 
