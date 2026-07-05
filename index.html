@@ -133,6 +133,19 @@ header{
 }
 .toast.show{opacity:1;}
 
+/* ---------- 投稿完了スタンプ演出 ---------- */
+.stamp-popup{
+  position:fixed; left:50%; top:40%; z-index:200;
+  transform:translate(-50%,-50%) scale(0.82);
+  opacity:0; pointer-events:none;
+  transition:opacity .3s ease, transform .3s cubic-bezier(.34,1.56,.64,1);
+}
+.stamp-popup.show{opacity:1; transform:translate(-50%,-50%) scale(1);}
+.stamp-popup img{
+  width:200px; height:auto; display:block;
+  filter:drop-shadow(0 12px 26px rgba(20,30,60,0.35));
+}
+
 /* ---------- Bottom nav ---------- */
 nav.bottom{
   position:relative; z-index:30;
@@ -193,32 +206,6 @@ nav.bottom button.active{color:var(--blue); font-weight:700;}
   font-family:"Noto Sans JP", sans-serif;
 }
 
-/* ---------- Detail Sheet（ピンをタップした時にボトムから出るポップアップ） ---------- */
-.detail-header{display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:6px;}
-.detail-title{display:flex; align-items:center; gap:8px; font-size:18px; font-weight:700; color:var(--ink); min-width:0;}
-.detail-title .em{font-size:20px; flex:none;}
-.detail-title .lb{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-.detail-close{
-  flex:none; width:32px; height:32px; border-radius:50%; border:none;
-  background:#F3F6FC; color:var(--muted); font-size:15px;
-  display:flex; align-items:center; justify-content:center; margin-top:-2px;
-}
-.detail-meta{font-size:12.5px; color:var(--muted); margin:0 0 3px;}
-.detail-row{display:flex; align-items:center; gap:10px; margin:12px 0;}
-.detail-avatar{
-  width:34px; height:34px; border-radius:50%; background:#EFF2F8; flex:none;
-  display:flex; align-items:center; justify-content:center; font-size:16px;
-  background-size:cover; background-position:center;
-}
-.detail-reporter{font-size:13px; color:var(--ink); font-weight:700;}
-.detail-comment-block{
-  background:#F3F6FC; border-radius:12px; padding:10px 12px; margin-bottom:14px;
-}
-.detail-comment-block label{display:block; font-size:11px; color:var(--muted); font-weight:700; margin-bottom:3px;}
-.detail-comment-block p{margin:0; font-size:13.5px; color:var(--ink); line-height:1.5; white-space:pre-wrap;}
-.detail-photo{width:100%; border-radius:14px; margin-bottom:14px; display:block;}
-.detail-nav-btn{display:flex; align-items:center; justify-content:center; gap:6px;}
-
 /* ---------- Report Sheet ---------- */
 .sheet-backdrop{
   position:fixed; inset:0; background:rgba(20,30,55,0.4); z-index:50;
@@ -268,10 +255,6 @@ nav.bottom button.active{color:var(--blue); font-weight:700;}
   border:none; background:rgba(31,41,55,0.72); color:#fff; border-radius:999px;
   padding:6px 12px; font-size:11.5px; font-weight:700; display:none; align-items:center; gap:4px;
 }
-
-.comment-row{margin-bottom:16px;}
-.comment-row label{font-size:12.5px; color:var(--muted); display:block; margin-bottom:6px;}
-textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-height:1.5;}
 
 .btn-primary{
   width:100%; padding:15px; border:none; border-radius:14px; background:var(--blue); color:#fff;
@@ -327,7 +310,6 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 }
 .profile-name{font-weight:700; font-size:16px; margin:0;}
 .profile-sub{font-size:12px; color:var(--muted); margin:2px 0 0;}
-.profile-bio{font-size:12.5px; color:var(--ink); margin:6px 0 0; line-height:1.5;}
 .stat-row{display:flex; gap:10px; margin-top:14px;}
 .stat-box{flex:1; background:#F3F6FC; border-radius:12px; padding:10px; text-align:center;}
 .stat-box b{display:block; font-size:18px; color:var(--blue);}
@@ -374,33 +356,6 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
   background:#F3F6FC; color:var(--blue); font-weight:700; font-size:13px; font-family:"Noto Sans JP", sans-serif;
 }
 .ranking-empty{font-size:13px; color:var(--muted); text-align:center; padding:30px 0;}
-
-/* ---------- 調査履歴リスト ---------- */
-.history-row{display:flex; align-items:center; gap:10px; padding:12px 2px; border-bottom:1px solid var(--line);}
-.history-row:last-child{border-bottom:none;}
-.history-icon{
-  width:38px; height:38px; border-radius:50%; background:#EFF2F8; flex:none;
-  display:flex; align-items:center; justify-content:center; font-size:18px;
-}
-.history-info{flex:1; min-width:0;}
-.history-info .t{font-size:14px; font-weight:700; color:var(--ink);}
-.history-info .m{font-size:11.5px; color:var(--muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-.rank-row.clickable{cursor:pointer;}
-
-/* ---------- 更新通知バナー ---------- */
-#updateBanner{
-  position:fixed; left:14px; right:14px; z-index:999;
-  bottom:calc(84px + var(--safe-bottom));
-  background:rgba(31,41,55,0.95); color:#fff; border-radius:14px;
-  padding:12px 14px; display:flex; align-items:center; justify-content:space-between; gap:10px;
-  font-family:"Noto Sans JP", sans-serif; font-size:12.5px;
-  box-shadow:0 10px 28px rgba(0,0,0,0.3);
-  animation:slideIn .3s ease;
-}
-#updateBanner button{
-  flex:none; border:none; background:var(--blue); color:#fff; font-weight:700;
-  font-size:12px; padding:8px 14px; border-radius:999px; font-family:"Noto Sans JP", sans-serif;
-}
 </style>
 </head>
 <body>
@@ -415,6 +370,8 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
   </div>
   <button class="header-btn" onclick="showToast('お知らせはまだありません')">🔔</button>
 </header>
+
+<div class="stamp-popup" id="stampPopup"></div>
 
 <div id="filterBar"></div>
 
@@ -442,16 +399,11 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
     <div style="flex:1; min-width:0;">
       <p class="profile-name" id="profileName">ゲストユーザー</p>
       <p class="profile-sub" id="profileSub">ログインすると記録が消えません</p>
-      <p class="profile-bio" id="profileBio" style="display:none;"></p>
     </div>
     <button class="edit-btn" onclick="openProfileSheet()" title="プロフィールを編集">✎</button>
   </div>
 
   <div class="card">
-    <div class="section-label-row" style="margin-bottom:2px;">
-      <label style="color:var(--muted); font-weight:700; font-size:12px;">記録</label>
-      <button class="link-btn" id="statsRefreshBtn" onclick="refreshMyStats()">↻ 更新</button>
-    </div>
     <div class="stat-row">
       <div class="stat-box"><b id="statCount">0</b><span>調査件数</span></div>
       <div class="stat-box"><b id="statPoints">0</b><span>ポイント</span></div>
@@ -466,7 +418,7 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
     <div class="list-row" onclick="signInApple()">
       <div class="l">🍎 <span>Appleでログイン</span></div><span>›</span>
     </div>
-    <div class="list-row" onclick="openHistorySheet()">
+    <div class="list-row" onclick="showToast('近日公開予定です')">
       <div class="l">📖 <span>調査履歴</span></div><span>›</span>
     </div>
     <div class="list-row" onclick="showToast('近日公開予定です')">
@@ -534,11 +486,6 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
       </div>
     </div>
 
-    <div class="comment-row">
-      <label>ひとこと（任意）</label>
-      <textarea class="text-input" id="commentInput" rows="2" maxlength="60" placeholder="気づいたことを一言メモ（例：大量に散乱していました）"></textarea>
-    </div>
-
     <button class="btn-primary" id="submitBtn" onclick="submitReport()" disabled>投稿する</button>
     <button class="btn-ghost" onclick="closeSheet()">キャンセル</button>
   </div>
@@ -569,70 +516,8 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
     <input type="text" id="nameInput" class="text-input" placeholder="ニックネームを入力（12文字まで）" maxlength="12">
     <p class="field-error" id="nameError"></p>
 
-    <label class="section-label">自己紹介</label>
-    <textarea class="text-input" id="bioInput" rows="3" maxlength="80" placeholder="自己紹介を書いてみよう（任意）"></textarea>
-
     <button class="btn-primary" id="profileSaveBtn" onclick="saveProfile()">保存する</button>
     <button class="btn-ghost" onclick="closeProfileSheet()">キャンセル</button>
-  </div>
-</div>
-
-<!-- ゴミ詳細シート（ピンをタップすると下から表示） -->
-<div class="sheet-backdrop" id="detailSheetBackdrop" onclick="if(event.target===this) closeDetailSheet()">
-  <div class="sheet">
-    <div class="sheet-handle"></div>
-    <div class="detail-header">
-      <div class="detail-title"><span class="em" id="detailEmoji">🗑️</span><span class="lb" id="detailItemType">ゴミ</span></div>
-      <button class="detail-close" onclick="closeDetailSheet()">✕</button>
-    </div>
-    <p class="detail-meta" id="detailDate"></p>
-    <p class="detail-meta" id="detailArea"></p>
-
-    <div class="detail-row">
-      <div class="detail-avatar" id="detailAvatar">👤</div>
-      <div class="detail-reporter" id="detailReporter">投稿者：無記名</div>
-    </div>
-
-    <div class="detail-comment-block" id="detailCommentBlock" style="display:none;">
-      <label>ひとこと</label>
-      <p id="detailComment"></p>
-    </div>
-
-    <img class="detail-photo" id="detailPhoto" style="display:none;">
-
-    <div id="detailRedoWrap"></div>
-    <button class="btn-primary detail-nav-btn" id="detailNavBtn" onclick="navigateToDetail()">🧭 ここへナビ</button>
-  </div>
-</div>
-
-<!-- ランキング：ユーザー詳細シート -->
-<div class="sheet-backdrop" id="userDetailSheetBackdrop" onclick="if(event.target===this) closeUserDetailSheet()">
-  <div class="sheet">
-    <div class="sheet-handle"></div>
-    <div class="detail-header">
-      <div class="detail-title"><span class="detail-avatar" id="udAvatar">👤</span><span class="lb" id="udName">名前</span></div>
-      <button class="detail-close" onclick="closeUserDetailSheet()">✕</button>
-    </div>
-    <div class="detail-comment-block" id="udBioBlock" style="display:none;">
-      <label>自己紹介</label>
-      <p id="udBio"></p>
-    </div>
-    <div class="stat-row">
-      <div class="stat-box"><b id="udCount">0</b><span>発見数</span></div>
-      <div class="stat-box"><b id="udPoints">0</b><span>ポイント</span></div>
-    </div>
-  </div>
-</div>
-
-<!-- マイページ：調査履歴シート -->
-<div class="sheet-backdrop" id="historySheetBackdrop" onclick="if(event.target===this) closeHistorySheet()">
-  <div class="sheet">
-    <div class="sheet-handle"></div>
-    <div class="detail-header">
-      <div class="detail-title"><span class="lb">調査履歴</span></div>
-      <button class="detail-close" onclick="closeHistorySheet()">✕</button>
-    </div>
-    <div id="historyList"></div>
   </div>
 </div>
 
@@ -674,8 +559,6 @@ function renderProfile(user){
   selectedAvatar = isAnon ? "👤" : "🧑";
   existingAvatarType = 'emoji';
   existingAvatarPhotoUrl = null;
-  profileBio = null;
-  updateProfileBioDisplay();
   setAvatarDisplay('avatarInitial', 'emoji', selectedAvatar, null);
 }
 
@@ -690,8 +573,6 @@ function loadUserProfile(uid){
       if (d.avatar) selectedAvatar = d.avatar;
       existingAvatarType = d.avatarType || 'emoji';
       existingAvatarPhotoUrl = d.avatarPhotoUrl || null;
-      profileBio = d.bio || null;
-      updateProfileBioDisplay();
       setAvatarDisplay('avatarInitial', existingAvatarType, selectedAvatar, existingAvatarPhotoUrl);
     }
   }).catch(err => console.error('プロフィール取得エラー:', err));
@@ -742,84 +623,11 @@ function loadMyStats(uid){
   }).catch(err => console.error(err));
 }
 
-function refreshMyStats(){
-  if (!currentUser) return;
-  const btn = document.getElementById('statsRefreshBtn');
-  btn.disabled = true; btn.textContent = '更新中…';
-  db.collection('reports').where('reportedBy','==',currentUser.uid).get().then(snap => {
-    const count = snap.size;
-    document.getElementById('statCount').textContent = count;
-    document.getElementById('statPoints').textContent = count * 10;
-    document.getElementById('statBadges').textContent = Math.floor(count / 10);
-    showToast('最新の状態に更新しました');
-  }).catch(err => {
-    console.error(err);
-    showToast('更新に失敗しました。もう一度お試しください');
-  }).finally(() => {
-    btn.disabled = false; btn.textContent = '↻ 更新';
-  });
-}
-
-/* ---- マイページ：調査履歴シート ---- */
-function openHistorySheet(){
-  if (!currentUser){ showToast('ログインすると履歴を確認できます'); return; }
-  const listEl = document.getElementById('historyList');
-  listEl.innerHTML = '<p class="ranking-empty">読み込み中…</p>';
-  document.getElementById('historySheetBackdrop').classList.add('open');
-
-  db.collection('reports').where('reportedBy','==',currentUser.uid).get()
-    .then(snap => {
-      if (snap.empty){
-        listEl.innerHTML = '<p class="ranking-empty">まだ調査記録がありません。ゴミを見つけたら投稿してみよう！</p>';
-        return;
-      }
-      const docs = [];
-      snap.forEach(doc => docs.push({ id: doc.id, d: doc.data() }));
-      docs.sort((a, b) => {
-        const ta = (a.d.createdAt && a.d.createdAt.toMillis) ? a.d.createdAt.toMillis() : 0;
-        const tb = (b.d.createdAt && b.d.createdAt.toMillis) ? b.d.createdAt.toMillis() : 0;
-        return tb - ta;
-      });
-      const rows = docs.map(({ id, d }) => {
-        const itemDef = findItemType(d.itemType);
-        const emoji = d.emoji || (itemDef && itemDef.emoji) || '🗑️';
-        const date = (d.createdAt && d.createdAt.toDate) ? d.createdAt.toDate().toLocaleDateString('ja-JP') : '';
-        const town = (d.area && d.area.town) ? d.area.town : '';
-        return `<div class="history-row" onclick="openHistoryItem('${id}')">
-          <span class="history-icon">${emoji}</span>
-          <div class="history-info">
-            <div class="t">${escapeHtml(d.itemType || 'ゴミ')}</div>
-            <div class="m">${date}${town ? ' ・ ' + escapeHtml(town) : ''}</div>
-          </div>
-        </div>`;
-      });
-      listEl.innerHTML = rows.join('');
-    })
-    .catch(err => {
-      console.error('履歴取得エラー:', err);
-      listEl.innerHTML = '<p class="ranking-empty">読み込みに失敗しました</p>';
-    });
-}
-function closeHistorySheet(){
-  document.getElementById('historySheetBackdrop').classList.remove('open');
-}
-function openHistoryItem(id){
-  db.collection('reports').doc(id).get().then(doc => {
-    if (!doc.exists){ showToast('この投稿は見つかりませんでした'); return; }
-    closeHistorySheet();
-    openDetailSheet(doc.data(), doc.id);
-  }).catch(err => {
-    console.error('履歴詳細取得エラー:', err);
-    showToast('読み込みに失敗しました');
-  });
-}
-
 /* =========================================================
    プロフィール編集（ニックネーム・アイコン / 重複防止つき）
 ========================================================= */
 const AVATAR_OPTIONS = ['👤','🧑','🧑‍🌾','🧑‍🔧','🧑‍🚀','🧑‍🎨','👩','👨','🐢','🐟','🦀','🐳','🌿','⚓','🏝️','🦭'];
 let profileNickname = null;
-let profileBio = null;
 let selectedAvatar = '👤';
 
 // avatarMode: 'emoji' or 'photo'（現在編集シート内で選択中の種別）
@@ -838,16 +646,6 @@ function setAvatarDisplay(elId, type, emoji, photoUrl){
   } else {
     el.style.backgroundImage = '';
     el.textContent = emoji || '👤';
-  }
-}
-
-function updateProfileBioDisplay(){
-  const el = document.getElementById('profileBio');
-  if (profileBio && profileBio.trim()){
-    el.textContent = profileBio;
-    el.style.display = '';
-  } else {
-    el.style.display = 'none';
   }
 }
 
@@ -947,7 +745,6 @@ function removeAvatarPhoto(){
 function openProfileSheet(){
   document.getElementById('nameError').style.display = 'none';
   document.getElementById('nameInput').value = profileNickname || '';
-  document.getElementById('bioInput').value = profileBio || '';
   selectedAvatarPhotoFile = null;
   avatarPhotoReadyPromise = null;
   document.getElementById('avatarPhotoInput').value = '';
@@ -971,7 +768,6 @@ async function saveProfile(){
   }
   const input = document.getElementById('nameInput');
   const raw = input.value.trim();
-  const bioRaw = document.getElementById('bioInput').value.trim();
   const errEl = document.getElementById('nameError');
   errEl.style.display = 'none';
 
@@ -1025,14 +821,11 @@ async function saveProfile(){
         nameKey: key,
         avatar: finalAvatarEmoji,
         avatarType: finalAvatarType,
-        avatarPhotoUrl: finalAvatarType === 'photo' ? finalAvatarPhotoUrl : null,
-        bio: bioRaw
+        avatarPhotoUrl: finalAvatarType === 'photo' ? finalAvatarPhotoUrl : null
       }, { merge: true });
     });
 
     profileNickname = raw;
-    profileBio = bioRaw;
-    updateProfileBioDisplay();
     existingAvatarType = finalAvatarType;
     existingAvatarPhotoUrl = finalAvatarType === 'photo' ? finalAvatarPhotoUrl : null;
     document.getElementById('profileName').textContent = raw;
@@ -1146,64 +939,24 @@ function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-/* ---- ゴミ詳細ボトムシート ---- */
-let detailLocation = null;
-
-function openDetailSheet(d, id){
-  const itemDef = findItemType(d.itemType);
-  const emoji = d.emoji || (itemDef && itemDef.emoji) || '🗑️';
-  document.getElementById('detailEmoji').textContent = emoji;
-  document.getElementById('detailItemType').textContent = d.itemType || 'ゴミ';
-
+function renderPopup(d, id){
+  const conf = CONFIDENCE_LABEL[d.confidence] || CONFIDENCE_LABEL['未確認'];
   const date = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleString('ja-JP') : '';
-  document.getElementById('detailDate').textContent = date;
-  document.getElementById('detailArea').textContent = (d.area && d.area.town) ? d.area.town : '';
-
-  const avatarEl = document.getElementById('detailAvatar');
-  if (d.reporterAvatarType === 'photo' && d.reporterAvatarPhotoUrl){
-    avatarEl.style.backgroundImage = `url(${d.reporterAvatarPhotoUrl})`;
-    avatarEl.textContent = '';
-  } else {
-    avatarEl.style.backgroundImage = '';
-    avatarEl.textContent = d.reporterAvatarEmoji || '👤';
-  }
-  document.getElementById('detailReporter').textContent = '投稿者：' + (d.reporterName || '無記名');
-
-  const commentBlock = document.getElementById('detailCommentBlock');
-  if (d.comment){
-    document.getElementById('detailComment').textContent = d.comment;
-    commentBlock.style.display = '';
-  } else {
-    commentBlock.style.display = 'none';
-  }
-
-  const photoEl = document.getElementById('detailPhoto');
-  if (d.photos && d.photos[0]){
-    photoEl.src = d.photos[0];
-    photoEl.style.display = '';
-  } else {
-    photoEl.style.display = 'none';
-  }
-
+  const reporterName = escapeHtml(d.reporterName || '無記名');
+  const photo = (d.photos && d.photos[0])
+    ? `<img src="${d.photos[0]}"><div class="reporter">投稿者：${reporterName}</div>`
+    : `<div class="reporter">投稿者：${reporterName}</div>`;
   const isOwner = !!(currentUser && d.reportedBy === currentUser.uid);
-  const redoWrap = document.getElementById('detailRedoWrap');
-  redoWrap.innerHTML = isOwner
+  const redoBtn = isOwner
     ? `<button class="popup-redo-btn" onclick="redoReport('${id}')">↺ 削除してやり直す</button>`
     : '';
-
-  detailLocation = (d.location) ? { lat: d.location.latitude, lng: d.location.longitude } : null;
-
-  document.getElementById('detailSheetBackdrop').classList.add('open');
-}
-
-function closeDetailSheet(){
-  document.getElementById('detailSheetBackdrop').classList.remove('open');
-}
-
-function navigateToDetail(){
-  if (!detailLocation) return;
-  const url = `https://www.google.com/maps/dir/?api=1&destination=${detailLocation.lat},${detailLocation.lng}&travelmode=walking`;
-  window.open(url, '_blank');
+  return `<div class="pin-popup">
+    <span class="badge ${conf.cls}">${conf.txt}</span>
+    <h4>${d.itemType || 'ゴミ'}</h4>
+    <div class="meta">${date}${d.area && d.area.town ? ' ・ ' + d.area.town : ''}</div>
+    ${photo}
+    ${redoBtn}
+  </div>`;
 }
 
 let allReports = [];
@@ -1218,7 +971,7 @@ function renderMarkers(){
     const lat = d.location.latitude, lng = d.location.longitude;
     heatPoints.push([lat, lng, 0.6]);
     const marker = L.marker([lat,lng], { icon: buildDivIcon(d) });
-    marker.on('click', () => openDetailSheet(d, id));
+    marker.bindPopup(renderPopup(d, id));
     markersLayer.addLayer(marker);
   });
   if (heatLayer) map.removeLayer(heatLayer);
@@ -1243,9 +996,8 @@ async function redoReport(id){
   const ok = confirm('この投稿を削除して、もう一度投稿し直しますか？');
   if (!ok) return;
   try {
-    closeDetailSheet();
+    map.closePopup();
     await db.collection('reports').doc(id).delete();
-    if (currentUser) loadMyStats(currentUser.uid);
     showToast('投稿を削除しました。続けて投稿してください');
     openSheet();
   } catch(err){
@@ -1268,7 +1020,6 @@ function computeRanking(tab){
       if (!key) return;
       if (!counts.has(key)){
         counts.set(key, {
-          uid: key,
           label: d.reporterName || '無記名',
           count: 0,
           avatarType: d.reporterAvatarType || 'emoji',
@@ -1317,10 +1068,8 @@ function renderRanking(){
         : `<span class="rank-avatar">${item.avatarEmoji}</span>`;
     }
     const valueLabel = rankingTab === 'user' ? `${item.count * 10}pt` : `${item.count}件`;
-    const rowClass = rankingTab === 'user' ? 'rank-row clickable' : 'rank-row';
-    const rowClick = rankingTab === 'user' ? ` onclick="openUserDetail('${item.uid}')"` : '';
 
-    rows.push(`<div class="${rowClass}"${rowClick}>
+    rows.push(`<div class="rank-row">
       ${rankBadge}${iconHtml}
       <span class="rank-label">${escapeHtml(item.label)}</span>
       <span class="rank-value">${valueLabel}</span>
@@ -1341,42 +1090,6 @@ function setRankingTab(tab, btnEl){
 function expandRanking(){
   rankingExpanded = true;
   renderRanking();
-}
-
-/* ---- ランキング：ユーザー詳細シート ---- */
-function openUserDetail(uid){
-  const data = computeRanking('user');
-  const item = data.find(it => it.uid === uid);
-  if (!item) return;
-
-  const avatarEl = document.getElementById('udAvatar');
-  if (item.avatarType === 'photo' && item.avatarPhotoUrl){
-    avatarEl.style.backgroundImage = `url(${item.avatarPhotoUrl})`;
-    avatarEl.textContent = '';
-  } else {
-    avatarEl.style.backgroundImage = '';
-    avatarEl.textContent = item.avatarEmoji || '👤';
-  }
-  document.getElementById('udName').textContent = item.label;
-  document.getElementById('udCount').textContent = item.count;
-  document.getElementById('udPoints').textContent = item.count * 10;
-
-  const bioBlock = document.getElementById('udBioBlock');
-  const bioEl = document.getElementById('udBio');
-  bioBlock.style.display = 'none';
-  bioEl.textContent = '';
-
-  document.getElementById('userDetailSheetBackdrop').classList.add('open');
-
-  db.collection('users').doc(uid).get().then(doc => {
-    if (doc.exists && doc.data().bio){
-      bioEl.textContent = doc.data().bio;
-      bioBlock.style.display = '';
-    }
-  }).catch(err => console.error('ユーザー情報取得エラー:', err));
-}
-function closeUserDetailSheet(){
-  document.getElementById('userDetailSheetBackdrop').classList.remove('open');
 }
 
 /* =========================================================
@@ -1584,7 +1297,6 @@ function updateSubmitState(){
 function openSheet(){
   selectedCategory = null; selectedItem = null; selectedLocation = null; selectedEmoji = null;
   resetPhoto();
-  document.getElementById('commentInput').value = '';
   renderIconGrid();
   updateSubmitState();
   document.getElementById('sheetBackdrop').classList.add('open');
@@ -1592,6 +1304,61 @@ function openSheet(){
   setTimeout(() => { miniMap.invalidateSize(); locateMe(); }, 280);
 }
 function closeSheet(){ document.getElementById('sheetBackdrop').classList.remove('open'); }
+
+/* =========================================================
+   投稿完了スタンプ演出（親方スタンプをランダム表示 → ピコン音 → フェードアウト）
+========================================================= */
+const STAMP_FILES = [
+  'stamps/stamp01_ryoukaiyade.webp',
+  'stamps/stamp02_makashitoki.webp',
+  'stamps/stamp03_kiaiya.webp',
+  'stamps/stamp04_shaanainoo.webp',
+  'stamps/stamp05_haraheltawa.webp',
+];
+
+// Web Audio APIで「ピコン」という通知音を合成する（音声ファイル不要）
+function playPiconSound(){
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+    const playTone = (freq, start, dur, peakGain) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, now + start);
+      gain.gain.linearRampToValueAtTime(peakGain, now + start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + start);
+      osc.stop(now + start + dur + 0.02);
+    };
+    playTone(1046.5, 0,    0.11, 0.22); // ピ
+    playTone(1568.0, 0.10, 0.24, 0.20); // コン
+    setTimeout(() => ctx.close().catch(() => {}), 700);
+  } catch(err){
+    console.warn('効果音の再生に失敗しました:', err);
+  }
+}
+
+let stampTimers = [];
+function showRandomStamp(){
+  const el = document.getElementById('stampPopup');
+  if (!el) return;
+  stampTimers.forEach(t => clearTimeout(t));
+  stampTimers = [];
+
+  const file = STAMP_FILES[Math.floor(Math.random() * STAMP_FILES.length)];
+  el.innerHTML = `<img src="${file}" alt="親方スタンプ">`;
+  playPiconSound();
+
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
+  stampTimers.push(setTimeout(() => el.classList.remove('show'), 1600));
+  stampTimers.push(setTimeout(() => { el.innerHTML = ''; }, 2050));
+}
 
 async function submitReport(){
   if (!selectedItem || !selectedLocation || !currentUser) return;
@@ -1625,7 +1392,6 @@ async function submitReport(){
     }
 
     btn.textContent = '投稿中…';
-    const comment = document.getElementById('commentInput').value.trim();
     await db.collection('reports').add({
       category: selectedCategory,
       itemType: selectedItem,
@@ -1633,7 +1399,6 @@ async function submitReport(){
       location: new firebase.firestore.GeoPoint(selectedLocation.lat, selectedLocation.lng),
       area: area,
       photos: photoUrl ? [photoUrl] : [],
-      comment: comment || '',
       confidence: '未確認',
       confirmCount: 0,
       reportedBy: currentUser.uid,
@@ -1645,8 +1410,8 @@ async function submitReport(){
       status: 'active'
     });
     closeSheet();
-    showToast('報告ありがとうございます！');
-    if (currentUser) loadMyStats(currentUser.uid);
+    showRandomStamp();
+    if (!currentUser.isAnonymous) loadMyStats(currentUser.uid);
   } catch(err){
     console.error(err);
     showToast('投稿に失敗しました。もう一度お試しください');
@@ -1668,7 +1433,6 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     document.getElementById('view-ranking').classList.toggle('hidden', target !== 'ranking');
     document.getElementById('view-soon').classList.toggle('hidden', target !== 'soon');
     if (target === 'ranking') renderRanking();
-    if (target === 'mypage' && currentUser) loadMyStats(currentUser.uid);
   });
 });
 
@@ -1694,62 +1458,12 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* =========================================================
-   PWA: Service Worker 登録 + 更新検知
-   （ホーム画面アイコンから開いた時に古いキャッシュが
-   　表示され続けてしまう問題への対応）
+   PWA: Service Worker 登録
 ========================================================= */
 if ('serviceWorker' in navigator){
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').then(reg => {
-      // すでに新しいバージョンが待機中ならすぐバナーを出す
-      if (reg.waiting) showUpdateBanner(reg);
-
-      // 新しいService Workerが見つかったら、インストール完了時にバナーを出す
-      reg.addEventListener('updatefound', () => {
-        const newWorker = reg.installing;
-        if (!newWorker) return;
-        newWorker.addEventListener('statechange', () => {
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller){
-            showUpdateBanner(reg);
-          }
-        });
-      });
-
-      // アプリをホーム画面から開き直した時・フォアグラウンドに戻した時に
-      // 更新がないかその都度チェックする
-      reg.update();
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') reg.update();
-      });
-    }).catch(err => console.warn('SW登録失敗:', err));
-
-    // 新しいService Workerが有効化されたら、一度だけ自動でページを再読み込みする
-    let refreshingPage = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (refreshingPage) return;
-      refreshingPage = true;
-      window.location.reload();
-    });
+    navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW登録失敗:', err));
   });
-}
-
-function showUpdateBanner(reg){
-  if (document.getElementById('updateBanner')) return;
-  const el = document.createElement('div');
-  el.id = 'updateBanner';
-  el.innerHTML = `
-    <span>新しいバージョンがあります</span>
-    <button id="updateBannerBtn">更新する</button>
-  `;
-  document.body.appendChild(el);
-  document.getElementById('updateBannerBtn').onclick = () => {
-    if (reg.waiting){
-      reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-    } else {
-      window.location.reload();
-    }
-    el.remove();
-  };
 }
 </script>
 </body>
