@@ -401,38 +401,65 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 .ranking-empty{font-size:13px; color:var(--muted); text-align:center; padding:30px 0;}
 
 /* ---------- タイムライン ---------- */
-.month-nav{display:flex; align-items:center; gap:8px; margin-bottom:12px;}
-.month-nav-btn{
-  flex:none; width:38px; height:38px; border-radius:50%; border:1.5px solid var(--line);
-  background:#fff; color:var(--blue); font-size:16px; font-weight:900;
+.timeline-frame{
+  background:var(--card); border:2px solid #DCE7FB; border-radius:28px;
+  margin:10px 16px 20px; padding:16px 14px 18px;
+  box-shadow:0 10px 26px rgba(20,30,60,0.08);
+}
+.month-nav-v2{display:flex; align-items:center; gap:10px; margin-bottom:14px;}
+.month-nav-btn-v2{
+  flex:none; width:42px; height:42px; border-radius:50%; border:none;
+  background:#fff; color:var(--blue); font-size:19px; font-weight:900;
+  box-shadow:0 3px 10px rgba(20,30,60,0.14);
   display:flex; align-items:center; justify-content:center;
 }
-.month-nav-btn:disabled{color:var(--line); border-color:var(--line); opacity:.6;}
-.month-nav-label{
-  flex:1; text-align:center; font-size:16px; font-weight:900; color:var(--ink);
-  font-family:"Zen Kaku Gothic New", sans-serif;
+.month-nav-btn-v2:disabled{color:var(--line); box-shadow:none; opacity:.5;}
+.month-nav-btn-v2:active{transform:scale(0.92);}
+.month-pill{
+  flex:1; text-align:center; background:#F3F7FF; border:1.5px solid #DCE7FB;
+  border-radius:999px; padding:11px 12px; font-weight:900; font-size:16px;
+  color:var(--ink); font-family:"Zen Kaku Gothic New", sans-serif;
 }
 .timeline-map-wrap{
-  height:230px; border-radius:14px; overflow:hidden; margin-bottom:12px; border:1px solid var(--line);
+  height:320px; border-radius:20px; overflow:hidden; margin-bottom:10px; border:1px solid var(--line);
 }
 #timelineMap{width:100%; height:100%;}
 .timeline-empty-note{
   font-size:12px; color:var(--muted); text-align:center; padding:8px 0 2px;
 }
-.timeline-dots{
-  display:flex; gap:8px; overflow-x:auto; padding:2px 2px 4px; margin-top:14px;
-  scrollbar-width:none;
+.timeline-slider-outer{
+  overflow-x:auto; scrollbar-width:none; margin:10px 0 2px;
 }
-.timeline-dots::-webkit-scrollbar{display:none;}
-.timeline-dot{
-  flex:none; border:none; background:#F3F6FC; color:var(--muted); font-weight:700;
-  font-size:13px; padding:9px 14px; border-radius:999px; font-family:"Noto Sans JP", sans-serif;
+.timeline-slider-outer::-webkit-scrollbar{display:none;}
+.timeline-slider{
+  position:relative; display:flex; gap:22px; justify-content:center;
+  padding:18px 10px 2px; min-width:100%;
 }
-.timeline-dot.active{background:var(--blue); color:#fff; box-shadow:0 3px 8px rgba(47,111,237,0.35);}
+.timeline-slider::before{
+  content:''; position:absolute; left:8px; right:8px; bottom:15px; height:2px;
+  background:var(--line); z-index:0;
+}
+.slider-month{
+  position:relative; z-index:1; flex:none; border:none; background:none;
+  display:flex; flex-direction:column; align-items:center; gap:7px;
+  font-family:"Noto Sans JP", sans-serif; padding:0 2px; transition:transform .15s ease;
+}
+.slider-month .lbl{font-size:12.5px; font-weight:700; color:var(--muted);}
+.slider-month .tick{width:7px; height:7px; border-radius:50%; background:var(--line); border:2px solid var(--card);}
+.slider-month .pill{display:none;}
+.slider-month.active{transform:translateY(-5px);}
+.slider-month.active .lbl,
+.slider-month.active .tick{display:none;}
+.slider-month.active .pill{
+  display:flex; align-items:center; justify-content:center;
+  background:var(--blue); color:#fff; font-weight:900; font-size:13px;
+  padding:8px 15px; border-radius:999px; box-shadow:0 6px 14px rgba(47,111,237,.4);
+}
 .timeline-compare-btn{
-  width:100%; margin-top:14px; padding:13px; border:none; border-radius:999px;
-  background:var(--blue); color:#fff; font-weight:700; font-size:13.5px; font-family:"Noto Sans JP", sans-serif;
+  width:100%; margin-top:14px; padding:14px; border:none; border-radius:999px;
+  background:#F1F3F8; color:var(--ink); font-weight:800; font-size:14px; font-family:"Noto Sans JP", sans-serif;
 }
+.timeline-compare-btn:active{transform:scale(0.98);}
 .compare-cols{display:flex; align-items:center; gap:10px; margin-bottom:16px;}
 .compare-col{flex:1; background:#F3F6FC; border-radius:14px; padding:14px 8px; text-align:center;}
 .compare-col .m{font-size:12px; color:var(--muted); font-weight:700; margin-bottom:6px;}
@@ -580,27 +607,21 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 
 <!-- タイムライン ビュー -->
 <div class="view hidden" id="view-timeline">
-  <div class="view-header"><h2>タイムライン</h2><p>月ごとの発見を地図で振り返る</p></div>
+  <div class="view-header"><h2>タイムライン</h2><p>月ごとの変化をスライダーで確認</p></div>
 
-  <div class="card">
-    <div class="month-nav">
-      <button type="button" class="month-nav-btn" id="timelinePrevBtn" onclick="shiftTimelineMonth(-1)">‹</button>
-      <div class="month-nav-label" id="timelineMonthLabel">2026年7月</div>
-      <button type="button" class="month-nav-btn" id="timelineNextBtn" onclick="shiftTimelineMonth(1)">›</button>
+  <div class="timeline-frame">
+    <div class="month-nav-v2">
+      <button type="button" class="month-nav-btn-v2" id="timelinePrevBtn" onclick="shiftTimelineMonth(-1)">‹</button>
+      <div class="month-pill" id="timelineMonthLabel">2026年7月</div>
+      <button type="button" class="month-nav-btn-v2" id="timelineNextBtn" onclick="shiftTimelineMonth(1)">›</button>
     </div>
 
     <div class="timeline-map-wrap"><div id="timelineMap"></div></div>
     <p class="timeline-empty-note" id="timelineEmptyNote" style="display:none;">この月の投稿はまだありません</p>
 
-    <div class="stat-row">
-      <div class="stat-box"><b id="timelineCount">0</b><span>発見数</span></div>
-      <div class="stat-box"><b id="timelineUsers">0</b><span>参加者数</span></div>
-      <div class="stat-box"><b id="timelinePoints">0</b><span>合計ポイント</span></div>
-    </div>
+    <div class="timeline-slider-outer"><div class="timeline-slider" id="timelineDots"></div></div>
 
-    <div class="timeline-dots" id="timelineDots"></div>
-
-    <button type="button" class="timeline-compare-btn" onclick="openCompareSheet()">先月と変化を比較</button>
+    <button type="button" class="timeline-compare-btn" onclick="openCompareSheet()">変化を比較</button>
   </div>
 </div>
 </div>
@@ -1671,11 +1692,6 @@ function renderTimeline(){
     timelineMap.setView(DEFAULT_CENTER, 13);
   }
 
-  document.getElementById('timelineCount').textContent = monthReports.length;
-  const uniqueUsers = new Set(monthReports.map(({ d }) => d.reportedBy).filter(Boolean));
-  document.getElementById('timelineUsers').textContent = uniqueUsers.size;
-  document.getElementById('timelinePoints').textContent = monthReports.length * 10;
-
   renderTimelineDots();
   updateTimelineNavButtons();
 
@@ -1691,15 +1707,16 @@ function renderTimelineDots(){
   months.forEach(key => {
     const y = Math.floor(key / 12), m = key % 12;
     const date = new Date(y, m, 1);
-    const dot = document.createElement('button');
-    dot.type = 'button';
-    dot.className = 'timeline-dot' + (key === currentKey ? ' active' : '');
-    dot.textContent = `${m+1}月`;
-    dot.onclick = () => { timelineMonthDate = date; renderTimeline(); };
-    wrap.appendChild(dot);
+    const isActive = key === currentKey;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'slider-month' + (isActive ? ' active' : '');
+    btn.innerHTML = `<span class="lbl">${m+1}月</span><span class="tick"></span><span class="pill">${m+1}月</span>`;
+    btn.onclick = () => { timelineMonthDate = date; renderTimeline(); };
+    wrap.appendChild(btn);
   });
 
-  const activeDot = wrap.querySelector('.timeline-dot.active');
+  const activeDot = wrap.querySelector('.slider-month.active');
   if (activeDot) activeDot.scrollIntoView({ inline:'center', block:'nearest' });
 }
 
