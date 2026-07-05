@@ -388,6 +388,56 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 }
 .ranking-empty{font-size:13px; color:var(--muted); text-align:center; padding:30px 0;}
 
+/* ---------- タイムライン ---------- */
+.month-nav{display:flex; align-items:center; gap:8px; margin-bottom:12px;}
+.month-nav-btn{
+  flex:none; width:38px; height:38px; border-radius:50%; border:1.5px solid var(--line);
+  background:#fff; color:var(--blue); font-size:16px; font-weight:900;
+  display:flex; align-items:center; justify-content:center;
+}
+.month-nav-btn:disabled{color:var(--line); border-color:var(--line); opacity:.6;}
+.month-nav-label{
+  flex:1; text-align:center; font-size:16px; font-weight:900; color:var(--ink);
+  font-family:"Zen Kaku Gothic New", sans-serif;
+}
+.timeline-map-wrap{
+  height:230px; border-radius:14px; overflow:hidden; margin-bottom:12px; border:1px solid var(--line);
+}
+#timelineMap{width:100%; height:100%;}
+.timeline-empty-note{
+  font-size:12px; color:var(--muted); text-align:center; padding:8px 0 2px;
+}
+.timeline-dots{
+  display:flex; gap:8px; overflow-x:auto; padding:2px 2px 4px; margin-top:14px;
+  scrollbar-width:none;
+}
+.timeline-dots::-webkit-scrollbar{display:none;}
+.timeline-dot{
+  flex:none; border:none; background:#F3F6FC; color:var(--muted); font-weight:700;
+  font-size:13px; padding:9px 14px; border-radius:999px; font-family:"Noto Sans JP", sans-serif;
+}
+.timeline-dot.active{background:var(--blue); color:#fff; box-shadow:0 3px 8px rgba(47,111,237,0.35);}
+.timeline-compare-btn{
+  width:100%; margin-top:14px; padding:13px; border:none; border-radius:999px;
+  background:var(--blue); color:#fff; font-weight:700; font-size:13.5px; font-family:"Noto Sans JP", sans-serif;
+}
+.compare-cols{display:flex; align-items:center; gap:10px; margin-bottom:16px;}
+.compare-col{flex:1; background:#F3F6FC; border-radius:14px; padding:14px 8px; text-align:center;}
+.compare-col .m{font-size:12px; color:var(--muted); font-weight:700; margin-bottom:6px;}
+.compare-col .c{font-size:22px; font-weight:900; color:var(--ink);}
+.compare-col .p{font-size:11.5px; color:var(--muted); margin-top:2px;}
+.compare-arrow{flex:none; font-size:18px; color:var(--muted);}
+.compare-diff{
+  text-align:center; font-size:14px; font-weight:900; margin-bottom:16px; padding:10px; border-radius:12px;
+}
+.compare-diff.up{background:#EAFBF4; color:#1E9E6B;}
+.compare-diff.down{background:#FEF1F1; color:#E0523F;}
+.compare-diff.flat{background:#F3F6FC; color:var(--muted);}
+.compare-type-row{display:flex; align-items:center; gap:10px; padding:9px 2px; border-bottom:1px solid var(--line); font-size:13px;}
+.compare-type-row:last-child{border-bottom:none;}
+.compare-type-row .lb{flex:1; color:var(--ink); font-weight:700;}
+.compare-type-row .vv{color:var(--muted); font-weight:700;}
+
 /* ---------- 発見図鑑（町・学区別のゴミ種類内訳） ---------- */
 .zukan-row{display:flex; align-items:center; gap:10px; padding:12px 2px; border-bottom:1px solid var(--line);}
 .zukan-row:last-child{border-bottom:none;}
@@ -502,7 +552,7 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 
 <!-- ランキング ビュー -->
 <div class="view hidden" id="view-ranking">
-  <div class="view-header"><h2>ランキング</h2><p>町別・学区別・ユーザー別の活躍を表示</p></div>
+  <div class="view-header"><h2>ランキング</h2><p id="rankingSubtitle">町別・学区別・ユーザー別の活躍を表示（毎月リセット）</p></div>
 
   <div class="card">
     <div class="rank-tabs">
@@ -515,19 +565,36 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
   </div>
 </div>
 
-<!-- 近日公開 ビュー(タイムライン用) -->
-<div class="view hidden" id="view-soon">
-  <div class="soon">
-    <div class="em">🚧</div>
-    <h3 style="margin:0 0 6px;">この機能は準備中です</h3>
-    <p style="font-size:13px; margin:0;">データが集まり次第、フェーズ2で公開予定やで。もうしばらく待っててな。</p>
+<!-- タイムライン ビュー -->
+<div class="view hidden" id="view-timeline">
+  <div class="view-header"><h2>タイムライン</h2><p>月ごとの発見を地図で振り返る</p></div>
+
+  <div class="card">
+    <div class="month-nav">
+      <button type="button" class="month-nav-btn" id="timelinePrevBtn" onclick="shiftTimelineMonth(-1)">‹</button>
+      <div class="month-nav-label" id="timelineMonthLabel">2026年7月</div>
+      <button type="button" class="month-nav-btn" id="timelineNextBtn" onclick="shiftTimelineMonth(1)">›</button>
+    </div>
+
+    <div class="timeline-map-wrap"><div id="timelineMap"></div></div>
+    <p class="timeline-empty-note" id="timelineEmptyNote" style="display:none;">この月の投稿はまだありません</p>
+
+    <div class="stat-row">
+      <div class="stat-box"><b id="timelineCount">0</b><span>発見数</span></div>
+      <div class="stat-box"><b id="timelineUsers">0</b><span>参加者数</span></div>
+      <div class="stat-box"><b id="timelinePoints">0</b><span>合計ポイント</span></div>
+    </div>
+
+    <div class="timeline-dots" id="timelineDots"></div>
+
+    <button type="button" class="timeline-compare-btn" onclick="openCompareSheet()">先月と変化を比較</button>
   </div>
 </div>
 </div>
 
 <nav class="bottom">
   <button class="nav-btn active" data-view="map"><span class="ic">🏠</span>ホーム</button>
-  <button class="nav-btn" data-view="soon"><span class="ic">📈</span>タイムライン</button>
+  <button class="nav-btn" data-view="timeline"><span class="ic">📈</span>タイムライン</button>
   <button class="nav-report" onclick="openSheet()"><span class="ic-report">＋</span><span class="rlabel">投稿</span></button>
   <button class="nav-btn" data-view="ranking"><span class="ic">🏆</span>ランキング</button>
   <button class="nav-btn" data-view="mypage"><span class="ic">🙋</span>マイページ</button>
@@ -646,6 +713,18 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
       <div class="stat-box"><b id="udCount">0</b><span>発見数</span></div>
       <div class="stat-box"><b id="udPoints">0</b><span>ポイント</span></div>
     </div>
+  </div>
+</div>
+
+<!-- タイムライン：先月比較シート -->
+<div class="sheet-backdrop" id="compareSheetBackdrop" onclick="if(event.target===this) closeCompareSheet()">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="detail-header">
+      <div class="detail-title"><span class="lb">先月と比較</span></div>
+      <button class="detail-close" onclick="closeCompareSheet()">✕</button>
+    </div>
+    <div id="compareBody"></div>
   </div>
 </div>
 
@@ -1262,6 +1341,8 @@ function renderMarkers(){
   if (heatLayer) map.removeLayer(heatLayer);
   heatLayer = L.heatLayer(heatPoints, { radius:32, blur:24, maxZoom:16 }).addTo(map);
   renderRanking();
+  const timelineViewEl = document.getElementById('view-timeline');
+  if (timelineViewEl && !timelineViewEl.classList.contains('hidden')) renderTimeline();
 }
 
 function loadReports(){
@@ -1298,9 +1379,29 @@ async function redoReport(id){
 let rankingTab = 'town';       // 'town' | 'gakku' | 'user'
 let rankingExpanded = false;
 
+/**
+ * createdAtの年月を取得（Firestore Timestamp想定、未確定なら null）
+ */
+function reportYearMonth(d){
+  if (!d.createdAt || !d.createdAt.toDate) return null;
+  const dt = d.createdAt.toDate();
+  return dt.getFullYear() * 12 + dt.getMonth(); // 月を跨いだ大小比較・一致比較用の数値キー
+}
+function isThisMonth(d){
+  const ym = reportYearMonth(d);
+  if (ym === null) return false;
+  const now = new Date();
+  return ym === (now.getFullYear() * 12 + now.getMonth());
+}
+function currentMonthLabel(){
+  const now = new Date();
+  return `${now.getFullYear()}年${now.getMonth()+1}月`;
+}
+
 function computeRanking(tab){
   const counts = new Map();
-  allReports.forEach(({ d }) => {
+  // ランキングは毎月リセット：今月投稿分だけを集計対象にする
+  allReports.filter(({ d }) => isThisMonth(d)).forEach(({ d }) => {
     if (tab === 'user'){
       const key = d.reportedBy;
       if (!key) return;
@@ -1330,9 +1431,12 @@ function renderRanking(){
   const moreBtn = document.getElementById('rankingMoreBtn');
   if (!list || !moreBtn) return;
 
+  const subtitleEl = document.getElementById('rankingSubtitle');
+  if (subtitleEl) subtitleEl.textContent = `町別・学区別・ユーザー別の活躍を表示（${currentMonthLabel()}分・毎月リセット）`;
+
   const data = computeRanking(rankingTab);
   if (data.length === 0){
-    list.innerHTML = `<p class="ranking-empty">まだデータがありません。投稿が集まると表示されます</p>`;
+    list.innerHTML = `<p class="ranking-empty">今月はまだデータがありません。投稿が集まると表示されます</p>`;
     moreBtn.style.display = 'none';
     return;
   }
@@ -1387,6 +1491,192 @@ function setRankingTab(tab, btnEl){
 function expandRanking(){
   rankingExpanded = true;
   renderRanking();
+}
+
+/* =========================================================
+   タイムライン（月ごとの発見をヒートマップで振り返る）
+========================================================= */
+let timelineMonthDate = firstOfMonth(new Date());
+let timelineMap = null;
+let timelineHeatLayer = null;
+let timelineInitialized = false;
+
+function firstOfMonth(date){
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+function monthKeyOf(date){
+  return date.getFullYear() * 12 + date.getMonth();
+}
+function monthLabelOf(date){
+  return `${date.getFullYear()}年${date.getMonth()+1}月`;
+}
+
+/**
+ * 指定した月（Dateの年月部分のみ使用）に投稿された報告だけを抽出
+ * ※allReportsは直近500件までのため、古い月ほどデータが欠ける場合があります
+ */
+function reportsInMonth(date){
+  const key = monthKeyOf(date);
+  return allReports.filter(({ d }) => reportYearMonth(d) === key);
+}
+
+/**
+ * データが存在する月＋今月を合わせた一覧（古い→新しい順）
+ */
+function getTimelineMonths(){
+  const keys = new Set([monthKeyOf(new Date())]);
+  allReports.forEach(({ d }) => {
+    const ym = reportYearMonth(d);
+    if (ym !== null) keys.add(ym);
+  });
+  return [...keys].sort((a,b) => a-b);
+}
+
+function ensureTimelineMap(){
+  if (timelineMap) return;
+  timelineMap = L.map('timelineMap', { zoomControl:false, attributionControl:false, scrollWheelZoom:false })
+    .setView(DEFAULT_CENTER, 13);
+  L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', { maxZoom:18 }).addTo(timelineMap);
+}
+
+function renderTimeline(){
+  ensureTimelineMap();
+
+  document.getElementById('timelineMonthLabel').textContent = monthLabelOf(timelineMonthDate);
+
+  const monthReports = reportsInMonth(timelineMonthDate);
+  const heatPoints = monthReports.filter(({ d }) => d.location).map(({ d }) => [d.location.latitude, d.location.longitude, 0.6]);
+
+  if (timelineHeatLayer) timelineMap.removeLayer(timelineHeatLayer);
+  timelineHeatLayer = L.heatLayer(heatPoints, { radius:32, blur:24, maxZoom:16 }).addTo(timelineMap);
+
+  const emptyNote = document.getElementById('timelineEmptyNote');
+  if (heatPoints.length){
+    emptyNote.style.display = 'none';
+    const bounds = L.latLngBounds(heatPoints.map(p => [p[0], p[1]]));
+    timelineMap.fitBounds(bounds.pad(0.35), { maxZoom:15 });
+  } else {
+    emptyNote.style.display = '';
+    timelineMap.setView(DEFAULT_CENTER, 13);
+  }
+
+  document.getElementById('timelineCount').textContent = monthReports.length;
+  const uniqueUsers = new Set(monthReports.map(({ d }) => d.reportedBy).filter(Boolean));
+  document.getElementById('timelineUsers').textContent = uniqueUsers.size;
+  document.getElementById('timelinePoints').textContent = monthReports.length * 10;
+
+  renderTimelineDots();
+  updateTimelineNavButtons();
+
+  requestAnimationFrame(() => { if (timelineMap) timelineMap.invalidateSize(); });
+}
+
+function renderTimelineDots(){
+  const wrap = document.getElementById('timelineDots');
+  const months = getTimelineMonths();
+  const currentKey = monthKeyOf(timelineMonthDate);
+
+  wrap.innerHTML = '';
+  months.forEach(key => {
+    const y = Math.floor(key / 12), m = key % 12;
+    const date = new Date(y, m, 1);
+    const dot = document.createElement('button');
+    dot.type = 'button';
+    dot.className = 'timeline-dot' + (key === currentKey ? ' active' : '');
+    dot.textContent = `${m+1}月`;
+    dot.onclick = () => { timelineMonthDate = date; renderTimeline(); };
+    wrap.appendChild(dot);
+  });
+
+  const activeDot = wrap.querySelector('.timeline-dot.active');
+  if (activeDot) activeDot.scrollIntoView({ inline:'center', block:'nearest' });
+}
+
+function updateTimelineNavButtons(){
+  const months = getTimelineMonths();
+  const idx = months.indexOf(monthKeyOf(timelineMonthDate));
+  document.getElementById('timelinePrevBtn').disabled = idx <= 0;
+  document.getElementById('timelineNextBtn').disabled = (idx === -1) || (idx >= months.length - 1);
+}
+
+function shiftTimelineMonth(delta){
+  const months = getTimelineMonths();
+  const idx = months.indexOf(monthKeyOf(timelineMonthDate));
+  const nextIdx = idx + delta;
+  if (nextIdx < 0 || nextIdx >= months.length) return;
+  const key = months[nextIdx];
+  timelineMonthDate = new Date(Math.floor(key / 12), key % 12, 1);
+  renderTimeline();
+}
+
+/* ---- タイムライン：先月と比較シート ---- */
+function countByType(reports){
+  const map = new Map();
+  reports.forEach(({ d }) => {
+    const label = d.itemType || 'その他';
+    map.set(label, (map.get(label) || 0) + 1);
+  });
+  return map;
+}
+
+function openCompareSheet(){
+  const currDate = timelineMonthDate;
+  const prevDate = new Date(currDate.getFullYear(), currDate.getMonth() - 1, 1);
+
+  const currReports = reportsInMonth(currDate);
+  const prevReports = reportsInMonth(prevDate);
+  const currCount = currReports.length, prevCount = prevReports.length;
+  const diff = currCount - prevCount;
+
+  let diffClass = 'flat', diffText = '先月と変化なし（±0件）';
+  if (diff > 0){ diffClass = 'up'; diffText = `先月より ${diff}件 増加しました 📈`; }
+  else if (diff < 0){ diffClass = 'down'; diffText = `先月より ${Math.abs(diff)}件 減少しました 📉`; }
+
+  const currByType = countByType(currReports);
+  const prevByType = countByType(prevReports);
+  const allTypes = new Set([...currByType.keys(), ...prevByType.keys()]);
+  const typeRows = [...allTypes].map(label => {
+    const c = currByType.get(label) || 0;
+    const p = prevByType.get(label) || 0;
+    const itemDef = findItemType(label);
+    const emoji = (itemDef && itemDef.emoji) || '🗑️';
+    return { label, emoji, c, p, delta: c - p };
+  }).sort((a,b) => b.c - a.c).slice(0, 6);
+
+  const typeRowsHtml = typeRows.length
+    ? typeRows.map(t => {
+        const deltaLabel = t.delta === 0 ? '±0' : (t.delta > 0 ? `+${t.delta}` : `${t.delta}`);
+        return `<div class="compare-type-row">
+          <span>${t.emoji}</span>
+          <span class="lb">${escapeHtml(t.label)}</span>
+          <span class="vv">${t.p}件→${t.c}件（${deltaLabel}）</span>
+        </div>`;
+      }).join('')
+    : `<p class="ranking-empty">比較できるデータがまだありません</p>`;
+
+  document.getElementById('compareBody').innerHTML = `
+    <div class="compare-cols">
+      <div class="compare-col">
+        <div class="m">${monthLabelOf(prevDate)}</div>
+        <div class="c">${prevCount}件</div>
+        <div class="p">${prevCount * 10}pt</div>
+      </div>
+      <div class="compare-arrow">→</div>
+      <div class="compare-col">
+        <div class="m">${monthLabelOf(currDate)}</div>
+        <div class="c">${currCount}件</div>
+        <div class="p">${currCount * 10}pt</div>
+      </div>
+    </div>
+    <div class="compare-diff ${diffClass}">${diffText}</div>
+    <div class="section-label">ゴミ種別ごとの変化（上位）</div>
+    ${typeRowsHtml}
+  `;
+
+  document.getElementById('compareSheetBackdrop').classList.add('open');
+}
+function closeCompareSheet(){
+  document.getElementById('compareSheetBackdrop').classList.remove('open');
 }
 
 /* ---- ランキング：ユーザー詳細シート ---- */
@@ -1811,8 +2101,9 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     document.getElementById('map-wrap').classList.toggle('hidden', target !== 'map');
     document.getElementById('view-mypage').classList.toggle('hidden', target !== 'mypage');
     document.getElementById('view-ranking').classList.toggle('hidden', target !== 'ranking');
-    document.getElementById('view-soon').classList.toggle('hidden', target !== 'soon');
+    document.getElementById('view-timeline').classList.toggle('hidden', target !== 'timeline');
     if (target === 'ranking') renderRanking();
+    if (target === 'timeline') renderTimeline();
     if (target === 'mypage' && currentUser) loadMyStats(currentUser.uid);
   });
 });
