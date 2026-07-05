@@ -411,7 +411,7 @@ nav.bottom button.active{color:var(--blue); font-weight:700;}
       <button class="link-btn" onclick="locateMe()">📍 現在地</button>
     </div>
     <div class="mini-map-wrap"><div id="miniMap"></div></div>
-    <p class="hint">ピンをドラッグして位置を微調整できます</p>
+    <p class="hint">地図をタップ、またはピンをドラッグして位置を指定できます</p>
 
     <label class="section-label">ゴミの種類</label>
     <div class="icon-grid" id="iconGrid"></div>
@@ -857,12 +857,18 @@ const CONFIDENCE_LABEL = {
 
 function categoryColor(cat){ return cat === '海ごみ' ? '#2c8879' : '#2F6FED'; }
 
-function buildDivIcon(item){
-  const color = categoryColor(item.category);
+function findItemType(label){
+  return ITEM_TYPES.find(it => it.label === label);
+}
+
+function buildDivIcon(d){
+  const color = categoryColor(d.category);
+  const itemDef = findItemType(d.itemType);
+  const emoji = d.emoji || (itemDef && itemDef.emoji) || '🗑️';
   return L.divIcon({
     className:'',
     html:`<div style="width:32px;height:32px;border-radius:50% 50% 50% 0;background:${color};transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.25);">
-            <span style="transform:rotate(45deg);font-size:15px;">${item.emoji || '🗑️'}</span>
+            <span style="transform:rotate(45deg);font-size:15px;color:#fff;line-height:1;">${emoji}</span>
           </div>`,
     iconSize:[32,32], iconAnchor:[16,30]
   });
@@ -948,7 +954,7 @@ const ITEM_TYPES = [
   { cat:'ポイ捨て', label:'食品トレー', emoji:'🍱' },
   { cat:'海ごみ', label:'発泡スチロール', emoji:'⚪' },
   { cat:'ポイ捨て', label:'タバコ', emoji:'🚬' },
-  { cat:'ポイ捨て', label:'ライター', emoji:'🔥' },
+  { cat:'ポイ捨て', label:'ライター', emoji:'<svg width="1em" height="1em" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:-0.15em;"><rect x="7" y="10" width="10" height="12" rx="3" fill="currentColor"/><rect x="10" y="4" width="4" height="7" rx="1.5" fill="currentColor"/><rect x="9" y="2" width="6" height="2.4" rx="1.2" fill="currentColor"/></svg>' },
   { cat:'ポイ捨て', label:'缶', emoji:'🥫' },
   { cat:'ポイ捨て', label:'ビン・ガラス', emoji:'🍾' },
   { cat:'ポイ捨て', label:'紙類', emoji:'📄' },
@@ -993,6 +999,7 @@ renderFilterBar();
 
 let selectedCategory = null;
 let selectedItem = null;
+let selectedEmoji = null;
 let selectedLocation = null;
 let selectedPhotoFile = null;      // 圧縮済み画像のData URL文字列（未保存）
 let photoReadyPromise = null;      // 圧縮処理の完了待ち用Promise
@@ -1010,6 +1017,7 @@ function renderIconGrid(){
     cell.onclick = () => {
       selectedItem = item.label;
       selectedCategory = item.cat;
+      selectedEmoji = item.emoji;
       renderIconGrid();
       updateSubmitState();
     };
@@ -1027,6 +1035,12 @@ function ensureMiniMap(){
   miniMarker.on('dragend', () => {
     const pos = miniMarker.getLatLng();
     selectedLocation = { lat: pos.lat, lng: pos.lng };
+    updateSubmitState();
+  });
+  // 地図上をタップした場所にピンを移動できるようにする
+  miniMap.on('click', (e) => {
+    miniMarker.setLatLng(e.latlng);
+    selectedLocation = { lat: e.latlng.lat, lng: e.latlng.lng };
     updateSubmitState();
   });
 }
@@ -1081,7 +1095,7 @@ function updateSubmitState(){
 }
 
 function openSheet(){
-  selectedCategory = null; selectedItem = null; selectedLocation = null;
+  selectedCategory = null; selectedItem = null; selectedLocation = null; selectedEmoji = null;
   resetPhoto();
   renderIconGrid();
   updateSubmitState();
@@ -1115,6 +1129,7 @@ async function submitReport(){
     await db.collection('reports').add({
       category: selectedCategory,
       itemType: selectedItem,
+      emoji: selectedEmoji,
       location: new firebase.firestore.GeoPoint(selectedLocation.lat, selectedLocation.lng),
       area: {},
       photos: photoUrl ? [photoUrl] : [],
