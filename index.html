@@ -342,6 +342,9 @@ nav.bottom button.active{color:var(--blue); font-weight:700;}
     <div class="list-row" onclick="signInGoogle()">
       <div class="l">🔑 <span>Googleでログイン</span></div><span>›</span>
     </div>
+    <div class="list-row" onclick="signInApple()">
+      <div class="l">🍎 <span>Appleでログイン</span></div><span>›</span>
+    </div>
     <div class="list-row" onclick="showToast('近日公開予定です')">
       <div class="l">📖 <span>調査履歴</span></div><span>›</span>
     </div>
@@ -456,7 +459,8 @@ auth.onAuthStateChanged(user => {
     loadUserProfile(user.uid);
     loadMyStats(user.uid);
   } else {
-    auth.signInAnonymously().catch(err => console.error("匿名ログイン失敗:", err));
+    // 未ログインの場合はログイン画面（login.html）へ
+    window.location.href = 'login.html';
   }
 });
 
@@ -488,6 +492,25 @@ function loadUserProfile(uid){
 
 function signInGoogle(){
   const provider = new firebase.auth.GoogleAuthProvider();
+  if (currentUser && currentUser.isAnonymous){
+    currentUser.linkWithPopup(provider)
+      .then(res => { renderProfile(res.user); showToast('ログインしました'); })
+      .catch(err => {
+        if (err.code === 'auth/credential-already-in-use'){
+          firebase.auth().signInWithPopup(provider);
+        } else {
+          console.error(err); showToast('ログインに失敗しました');
+        }
+      });
+  } else {
+    auth.signInWithPopup(provider);
+  }
+}
+
+function signInApple(){
+  const provider = new firebase.auth.OAuthProvider('apple.com');
+  provider.addScope('email');
+  provider.addScope('name');
   if (currentUser && currentUser.isAnonymous){
     currentUser.linkWithPopup(provider)
       .then(res => { renderProfile(res.user); showToast('ログインしました'); })
