@@ -80,7 +80,7 @@ input,textarea,select{font-family:inherit;}
 /* ---------- タップ後の「何を登録するか」選択シート ---------- */
 .type-choice-sheet{
   position:absolute; left:14px; right:14px; bottom:14px; z-index:22;
-  background:var(--card); border-radius:16px; padding:14px 16px calc(14px + var(--safe-bottom));
+  background:var(--card); border-radius:16px; padding:38px 16px calc(14px + var(--safe-bottom));
   box-shadow:0 8px 24px rgba(20,30,60,0.22); animation:slideUp .25s ease;
 }
 .type-choice-sheet.hidden{display:none;}
@@ -95,6 +95,13 @@ input,textarea,select{font-family:inherit;}
 .tcs-cancel{width:100%; border:1px solid var(--line); background:none; border-radius:10px; padding:9px; font-size:12.5px; color:var(--muted); font-weight:700;}
 @keyframes slideUp{from{opacity:0; transform:translateY(14px);} to{opacity:1; transform:translateY(0);}}
 
+.panel-close-btn{
+  position:absolute; top:8px; right:10px; z-index:6;
+  border:none; background:none; color:var(--muted); font-size:20px; line-height:1;
+  padding:6px 8px; border-radius:8px;
+}
+.panel-close-btn:active{background:var(--bg);}
+
 .list-panel-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;}
 .list-panel-header h2{font-size:16px; margin:0;}
 .list-panel-header button{border:none; background:none; color:var(--muted); font-size:18px;}
@@ -102,15 +109,16 @@ input,textarea,select{font-family:inherit;}
 #mapArea{position:relative; flex:1; min-height:0;}
 #adminMap{position:absolute; inset:0; z-index:0;}
 .map-hint{
-  position:absolute; top:10px; left:10px; right:10px; z-index:15;
+  position:absolute; top:84px; left:10px; right:10px; z-index:15;
   background:rgba(255,255,255,0.95); border-radius:10px; padding:8px 12px;
   font-size:12px; color:var(--muted); box-shadow:0 2px 8px rgba(20,30,60,0.12);
+  pointer-events:none;
 }
 
 /* ---------- 登録フォームパネル ---------- */
 .form-panel{
   position:absolute; left:0; right:0; bottom:0; z-index:20;
-  background:var(--card); border-radius:18px 18px 0 0; padding:16px 18px calc(16px + var(--safe-bottom));
+  background:var(--card); border-radius:18px 18px 0 0; padding:40px 18px calc(16px + var(--safe-bottom));
   box-shadow:0 -6px 20px rgba(20,30,60,0.15); max-height:70%; overflow-y:auto;
 }
 .form-panel.hidden{display:none;}
@@ -193,6 +201,7 @@ input,textarea,select{font-family:inherit;}
 
     <!-- タップ直後：ゴミ／スタンプの選択シート -->
     <div class="type-choice-sheet hidden" id="typeChoiceSheet">
+      <button type="button" class="panel-close-btn" onclick="cancelPlacement()" aria-label="閉じる">✕</button>
       <p class="tcs-label">ここに何を登録しますか？</p>
       <div class="tcs-actions">
         <button type="button" class="tcs-btn tcs-gomi" onclick="chooseType('gomi')">🗑️<br>ゴミ投稿</button>
@@ -203,6 +212,7 @@ input,textarea,select{font-family:inherit;}
 
     <!-- ゴミ追加フォーム -->
     <div class="form-panel-gomi form-panel hidden" id="formPanelGomi">
+      <button type="button" class="panel-close-btn" onclick="closeFormPanel()" aria-label="閉じる">✕</button>
       <div class="form-row">
         <label>種類</label>
         <select id="gomiTypeSelect"></select>
@@ -224,6 +234,7 @@ input,textarea,select{font-family:inherit;}
 
     <!-- スタンプ追加フォーム -->
     <div class="form-panel-stamp form-panel hidden" id="formPanelStamp">
+      <button type="button" class="panel-close-btn" onclick="closeFormPanel()" aria-label="閉じる">✕</button>
       <div class="form-row">
         <label>スポット名</label>
         <input type="text" id="stampTitle" placeholder="例：二見浦">
@@ -320,13 +331,19 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 
 let adminReady = false;
+let anonAuthPromise = null;
 
 function enterAdmin(){
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('adminApp').classList.remove('hidden');
   if (!adminReady){
     adminReady = true;
-    auth.signInAnonymously().catch(err => console.warn('匿名サインインに失敗:', err));
+    // ※ Firestoreへの書き込み（ゴミ・スタンプ登録）は認証（匿名サインイン）完了後で
+    //   ないとセキュリティルールにより権限エラーになる場合があるため、
+    //   このPromiseを保持しておき、登録処理の直前で必ず完了を待つ。
+    anonAuthPromise = auth.signInAnonymously().catch(err => {
+      console.warn('匿名サインインに失敗:', err);
+    });
     initAdminMap();
   }
 }
@@ -532,6 +549,8 @@ async function submitGomi(){
   const comment = document.getElementById('gomiComment').value.trim();
 
   try {
+    if (anonAuthPromise) await anonAuthPromise;
+
     const area = {};
     const townName = await reverseGeocodeTown(clickedLatLng.lat, clickedLatLng.lng);
     if (townName) area.town = townName;
@@ -563,7 +582,7 @@ async function submitGomi(){
     gomiPhotoDataUrl = null;
   } catch(err) {
     console.error(err);
-    showToast('登録に失敗しました');
+    showToast('登録に失敗しました' + (err && err.code ? '（' + err.code + '）' : ''));
   }
 }
 
@@ -578,6 +597,8 @@ async function submitStamp(){
   if (!title){ showToast('スポット名を入力してください'); return; }
 
   try {
+    if (anonAuthPromise) await anonAuthPromise;
+
     await db.collection('stampSpots').add({
       lat: clickedLatLng.lat,
       lng: clickedLatLng.lng,
@@ -585,6 +606,7 @@ async function submitStamp(){
       title: title,
       historyText: historyText,
       photo: stampPhotoDataUrl || null,
+      createdBy: auth.currentUser ? auth.currentUser.uid : null,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     showToast('スタンプ地点を登録しました');
@@ -597,7 +619,7 @@ async function submitStamp(){
     stampPhotoDataUrl = null;
   } catch(err) {
     console.error(err);
-    showToast('登録に失敗しました');
+    showToast('登録に失敗しました' + (err && err.code ? '（' + err.code + '）' : ''));
   }
 }
 
