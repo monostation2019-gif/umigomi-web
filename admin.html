@@ -147,13 +147,24 @@ input,textarea,select{font-family:inherit;}
 .list-tab.active{background:var(--ink); border-color:var(--ink); color:#fff;}
 .admin-item{
   background:var(--card); border-radius:12px; padding:10px 12px; margin-bottom:8px;
-  display:flex; align-items:center; gap:10px; box-shadow:0 1px 4px rgba(20,30,60,0.06);
+  display:flex; align-items:flex-start; gap:10px; box-shadow:0 1px 4px rgba(20,30,60,0.06);
 }
-.admin-item .em{font-size:20px; width:28px; text-align:center; flex:none;}
+.admin-item .em{font-size:20px; width:44px; height:44px; flex:none; border-radius:8px; background:var(--bg); display:flex; align-items:center; justify-content:center;}
+.admin-item .thumb{width:44px; height:44px; border-radius:8px; object-fit:cover; flex:none; background:var(--bg);}
 .admin-item .info{flex:1; min-width:0;}
 .admin-item .info .t{font-size:13.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-.admin-item .info .s{font-size:11.5px; color:var(--muted);}
-.admin-item .del-btn{border:none; background:none; color:var(--red); font-size:18px; flex:none; padding:4px;}
+.admin-item .info .d{
+  font-size:11.5px; color:var(--ink); margin-top:3px; line-height:1.4;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.admin-item .info .s{font-size:11px; color:var(--muted); margin-top:3px;}
+.admin-item .actions{display:flex; flex-direction:column; align-items:stretch; gap:4px; flex:none;}
+.admin-item .actions button{
+  border:none; border-radius:8px; padding:4px 9px; font-size:11px; font-weight:700; white-space:nowrap;
+}
+.admin-item .loc-btn{background:rgba(47,111,237,0.1); color:var(--blue);}
+.admin-item .edit-btn{background:rgba(63,167,150,0.12); color:var(--teal);}
+.admin-item .del-btn{background:none; color:var(--red); font-size:15px; padding:2px; align-self:center;}
 .empty-note{color:var(--muted); font-size:13px; text-align:center; padding:30px 0;}
 
 .dm-note{
@@ -228,7 +239,7 @@ input,textarea,select{font-family:inherit;}
       </div>
       <div class="form-actions">
         <button class="btn-cancel" onclick="closeFormPanel()">キャンセル</button>
-        <button class="btn-submit" onclick="submitGomi()">登録する</button>
+        <button class="btn-submit" id="gomiSubmitBtn" onclick="submitGomi()">登録する</button>
       </div>
     </div>
 
@@ -254,7 +265,7 @@ input,textarea,select{font-family:inherit;}
       </div>
       <div class="form-actions">
         <button class="btn-cancel" onclick="closeFormPanel()">キャンセル</button>
-        <button class="btn-submit" onclick="submitStamp()">登録する</button>
+        <button class="btn-submit" id="stampSubmitBtn" onclick="submitStamp()">登録する</button>
       </div>
     </div>
   </div>
@@ -388,6 +399,10 @@ const stampIconAdmin = L.icon({
 let tempMarker = null;
 let chosenType = null;
 let adminMyLocationMarker = null;
+let editingGomiId = null;
+let editingStampId = null;
+let editingGomiExistingPhoto = null;
+let editingStampExistingPhoto = null;
 
 function initAdminMap(){
   adminMap = L.map('adminMap', { zoomControl:true }).setView([34.4859, 136.7093], 14);
@@ -455,10 +470,16 @@ function closeFormPanel(){
   if (tempMarker){ adminMap.removeLayer(tempMarker); tempMarker = null; }
   clickedLatLng = null;
   chosenType = null;
+  editingGomiId = null;
+  editingStampId = null;
+  editingGomiExistingPhoto = null;
+  editingStampExistingPhoto = null;
+  document.getElementById('gomiSubmitBtn').textContent = '登録する';
+  document.getElementById('stampSubmitBtn').textContent = '登録する';
 }
 
 function openListPanel(){
-  cancelPlacement();
+  closeFormPanel();
   document.getElementById('listPanel').classList.remove('hidden');
   renderList();
 }
@@ -547,6 +568,7 @@ async function submitGomi(){
   const label = gomiSelect.value;
   const itemDef = ITEM_TYPES.find(it => it.label === label);
   const comment = document.getElementById('gomiComment').value.trim();
+  const isEditing = !!editingGomiId;
 
   try {
     if (anonAuthPromise) await anonAuthPromise;
@@ -556,25 +578,39 @@ async function submitGomi(){
     if (townName) area.town = townName;
     // ※学区（gakku）はindex.html側の対応表が大きいため、ここでは町名のみ自動判定します
 
-    await db.collection('reports').add({
+    const photoToSave = gomiPhotoDataUrl
+      ? [gomiPhotoDataUrl]
+      : (isEditing && editingGomiExistingPhoto ? [editingGomiExistingPhoto] : []);
+
+    const payload = {
       category: itemDef ? itemDef.cat : 'ポイ捨て',
       itemType: label,
       emoji: itemDef ? itemDef.emoji : '❔',
       location: new firebase.firestore.GeoPoint(clickedLatLng.lat, clickedLatLng.lng),
       area: area,
-      photos: gomiPhotoDataUrl ? [gomiPhotoDataUrl] : [],
-      comment: comment || '',
-      confidence: '未確認',
-      confirmCount: 0,
-      reportedBy: 'admin',
-      reporterName: '運営（親方）',
-      reporterAvatarType: 'emoji',
-      reporterAvatarEmoji: '🧑‍🔧',
-      reporterAvatarPhotoUrl: null,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      status: 'active'
-    });
-    showToast('ゴミ投稿を登録しました');
+      photos: photoToSave,
+      comment: comment || ''
+    };
+
+    if (isEditing){
+      await db.collection('reports').doc(editingGomiId).update(payload);
+      showToast('ゴミ投稿を更新しました');
+    } else {
+      await db.collection('reports').add({
+        ...payload,
+        confidence: '未確認',
+        confirmCount: 0,
+        reportedBy: 'admin',
+        reporterName: '運営（親方）',
+        reporterAvatarType: 'emoji',
+        reporterAvatarEmoji: '🧑‍🔧',
+        reporterAvatarPhotoUrl: null,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        status: 'active'
+      });
+      showToast('ゴミ投稿を登録しました');
+    }
+
     closeFormPanel();
     document.getElementById('gomiComment').value = '';
     document.getElementById('gomiPhotoInput').value = '';
@@ -595,21 +631,34 @@ async function submitStamp(){
   const historyText = document.getElementById('stampHistory').value.trim();
   const radius = Number(document.getElementById('stampRadius').value) || 30;
   if (!title){ showToast('スポット名を入力してください'); return; }
+  const isEditing = !!editingStampId;
 
   try {
     if (anonAuthPromise) await anonAuthPromise;
 
-    await db.collection('stampSpots').add({
+    const photoToSave = stampPhotoDataUrl || (isEditing ? (editingStampExistingPhoto || null) : null);
+
+    const payload = {
       lat: clickedLatLng.lat,
       lng: clickedLatLng.lng,
       radius: radius,
       title: title,
       historyText: historyText,
-      photo: stampPhotoDataUrl || null,
-      createdBy: auth.currentUser ? auth.currentUser.uid : null,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    showToast('スタンプ地点を登録しました');
+      photo: photoToSave
+    };
+
+    if (isEditing){
+      await db.collection('stampSpots').doc(editingStampId).update(payload);
+      showToast('スタンプ地点を更新しました');
+    } else {
+      await db.collection('stampSpots').add({
+        ...payload,
+        createdBy: auth.currentUser ? auth.currentUser.uid : null,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      showToast('スタンプ地点を登録しました');
+    }
+
     closeFormPanel();
     document.getElementById('stampTitle').value = '';
     document.getElementById('stampHistory').value = '';
@@ -664,33 +713,120 @@ function setListTab(tab, btn){
   renderList();
 }
 
+function escapeHtml(str){
+  return String(str == null ? '' : str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 function renderList(){
   const wrap = document.getElementById('listItems');
   if (currentListTab === 'gomi'){
     if (allGomiReports.length === 0){ wrap.innerHTML = '<p class="empty-note">まだ投稿がありません</p>'; return; }
-    wrap.innerHTML = allGomiReports.map(r => `
+    wrap.innerHTML = allGomiReports.map(r => {
+      const lat = r.location ? r.location.latitude : null;
+      const lng = r.location ? r.location.longitude : null;
+      const photoHtml = (r.photos && r.photos[0])
+        ? `<img class="thumb" src="${r.photos[0]}" alt="">`
+        : `<div class="em">${r.emoji || '🗑️'}</div>`;
+      return `
       <div class="admin-item">
-        <div class="em">${r.emoji || '🗑️'}</div>
+        ${photoHtml}
         <div class="info">
-          <div class="t">${r.itemType || ''}${r.area && r.area.town ? '（' + r.area.town + '）' : ''}</div>
-          <div class="s">投稿者：${r.reporterName || '無記名'}</div>
+          <div class="t">${escapeHtml(r.itemType || '')}${r.area && r.area.town ? '（' + escapeHtml(r.area.town) + '）' : ''}</div>
+          <div class="d">${r.comment ? escapeHtml(r.comment) : '（説明文なし）'}</div>
+          <div class="s">投稿者：${escapeHtml(r.reporterName || '無記名')}</div>
         </div>
-        <button class="del-btn" onclick="deleteGomi('${r.id}')">✕</button>
-      </div>
-    `).join('');
+        <div class="actions">
+          ${lat != null ? `<button type="button" class="loc-btn" onclick="locateItem(${lat},${lng})">📍場所</button>` : ''}
+          <button type="button" class="edit-btn" onclick="editGomi('${r.id}')">✏️編集</button>
+          <button type="button" class="del-btn" onclick="deleteGomi('${r.id}')">✕</button>
+        </div>
+      </div>`;
+    }).join('');
   } else {
     if (allStampSpots.length === 0){ wrap.innerHTML = '<p class="empty-note">まだスタンプ地点がありません</p>'; return; }
-    wrap.innerHTML = allStampSpots.map(s => `
+    wrap.innerHTML = allStampSpots.map(s => {
+      const photoHtml = s.photo
+        ? `<img class="thumb" src="${s.photo}" alt="">`
+        : `<div class="em">🏅</div>`;
+      return `
       <div class="admin-item">
-        <div class="em">🏅</div>
+        ${photoHtml}
         <div class="info">
-          <div class="t">${s.title}</div>
+          <div class="t">${escapeHtml(s.title)}</div>
+          <div class="d">${s.historyText ? escapeHtml(s.historyText) : '（説明文なし）'}</div>
           <div class="s">半径${s.radius}m</div>
         </div>
-        <button class="del-btn" onclick="deleteStamp('${s.id}')">✕</button>
-      </div>
-    `).join('');
+        <div class="actions">
+          <button type="button" class="loc-btn" onclick="locateItem(${s.lat},${s.lng})">📍場所</button>
+          <button type="button" class="edit-btn" onclick="editStamp('${s.id}')">✏️編集</button>
+          <button type="button" class="del-btn" onclick="deleteStamp('${s.id}')">✕</button>
+        </div>
+      </div>`;
+    }).join('');
   }
+}
+
+/* 一覧から地図の該当地点へジャンプ */
+function locateItem(lat, lng){
+  closeListPanel();
+  adminMap.setView([lat, lng], 18, { animate:true });
+}
+
+/* ゴミ投稿の編集 */
+function editGomi(id){
+  const r = allGomiReports.find(x => x.id === id);
+  if (!r || !r.location){ showToast('位置情報が見つかりません'); return; }
+  closeListPanel();
+  closeFormPanel();
+
+  editingGomiId = id;
+  editingGomiExistingPhoto = (r.photos && r.photos[0]) ? r.photos[0] : null;
+  clickedLatLng = { lat: r.location.latitude, lng: r.location.longitude };
+
+  tempMarker = L.marker(clickedLatLng, { draggable:true }).addTo(adminMap);
+  tempMarker.on('dragend', () => { clickedLatLng = tempMarker.getLatLng(); });
+  adminMap.setView(clickedLatLng, 18);
+
+  gomiSelect.value = r.itemType || '';
+  document.getElementById('gomiComment').value = r.comment || '';
+  gomiPhotoDataUrl = null;
+  const preview = document.getElementById('gomiPhotoPreview');
+  if (editingGomiExistingPhoto){ preview.src = editingGomiExistingPhoto; preview.style.display = ''; }
+  else { preview.src = ''; preview.style.display = 'none'; }
+
+  document.getElementById('typeChoiceSheet').classList.add('hidden');
+  document.getElementById('formPanelStamp').classList.add('hidden');
+  document.getElementById('formPanelGomi').classList.remove('hidden');
+  document.getElementById('gomiSubmitBtn').textContent = '更新する';
+}
+
+/* スタンプ地点の編集 */
+function editStamp(id){
+  const s = allStampSpots.find(x => x.id === id);
+  if (!s){ showToast('データが見つかりません'); return; }
+  closeListPanel();
+  closeFormPanel();
+
+  editingStampId = id;
+  editingStampExistingPhoto = s.photo || null;
+  clickedLatLng = { lat: s.lat, lng: s.lng };
+
+  tempMarker = L.marker(clickedLatLng, { draggable:true, icon: stampIconAdmin }).addTo(adminMap);
+  tempMarker.on('dragend', () => { clickedLatLng = tempMarker.getLatLng(); });
+  adminMap.setView(clickedLatLng, 18);
+
+  document.getElementById('stampTitle').value = s.title || '';
+  document.getElementById('stampHistory').value = s.historyText || '';
+  document.getElementById('stampRadius').value = s.radius || 30;
+  stampPhotoDataUrl = null;
+  const preview = document.getElementById('stampPhotoPreview');
+  if (editingStampExistingPhoto){ preview.src = editingStampExistingPhoto; preview.style.display = ''; }
+  else { preview.src = ''; preview.style.display = 'none'; }
+
+  document.getElementById('typeChoiceSheet').classList.add('hidden');
+  document.getElementById('formPanelGomi').classList.add('hidden');
+  document.getElementById('formPanelStamp').classList.remove('hidden');
+  document.getElementById('stampSubmitBtn').textContent = '更新する';
 }
 
 async function deleteGomi(id){
