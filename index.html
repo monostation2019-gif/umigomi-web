@@ -1495,6 +1495,34 @@ let stampLayer = null;
 let approachedSpotIds = new Set(); // 「接近中」の音を鳴らし済みのスポット（同じ場所で何度も鳴らさないため）
 const APPROACH_EXTRA_METERS = 80;  // 捕獲判定の半径＋このぶん手前に入ったら接近音を鳴らす
 
+/* ---- 効果音用の共有AudioContext ----
+   毎回 new AudioContext() を作ると、スマホのブラウザでは「ユーザー操作なしに
+   作られた/再開されていないAudioContext」は自動再生ポリシーによって
+   ミュートされたまま(suspended状態)になり、音が鳴らない原因になる。
+   ここでは共有の1つのAudioContextを使い、ユーザーの最初のタップで
+   resume()しておくことで、その後のGPS判定（ユーザー操作を伴わない）から
+   呼ばれても確実に音が鳴るようにする。 */
+let sharedAudioCtx = null;
+function getAudioContext(){
+  if (!sharedAudioCtx){
+    try { sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (err){ console.warn('AudioContextの作成に失敗:', err); return null; }
+  }
+  if (sharedAudioCtx.state === 'suspended'){
+    sharedAudioCtx.resume().catch(() => {});
+  }
+  return sharedAudioCtx;
+}
+// ユーザーが画面を最初にタップした時点でAudioContextを解錠し、
+// スタンプラリー参加中なら通知の許可もあわせてリクエストしておく
+// （ブラウザによってはユーザー操作を伴わないと許可ダイアログが出ないため）
+['click', 'touchstart'].forEach(evt => {
+  window.addEventListener(evt, () => {
+    getAudioContext();
+    if (isStampRallyActive()) requestStampNotificationPermission();
+  }, { passive:true, once:true });
+});
+
 function haversineMeters(lat1, lng1, lat2, lng2){
   const R = 6371000;
   const toRad = (d) => d * Math.PI / 180;
@@ -1517,6 +1545,10 @@ function renderStampMarkers(){
   });
 }
 
+const DEFAULT_STAMP_RADIUS_M = 30; // radiusが未設定/不正な値のスポット用フォールバック
+const warnedBadSpotIds = new Set(); // 同じスポットについて何度もconsole.warnしないため
+const notifiedInRangeSpotIds = new Set(); // アプリが裏に回っている間、捕獲範囲内の通知を送信済みのスポット
+
 function checkStampProximity(latlng, accuracy){
   if (!currentUser) return;
   if (!isStampRallyActive()){ hideStampCaptureButton(); return; } // 離脱中は判定・通知を一切行わない
@@ -1529,13 +1561,42 @@ function checkStampProximity(latlng, accuracy){
   let nearestSpot = null, nearestDist = Infinity;
   for (const spot of STAMP_SPOTS){
     if (collectedStampIds.has(spot.id)) continue;
-    const d = haversineMeters(latlng.lat, latlng.lng, spot.lat, spot.lng);
+
+    // Firestoreのデータがまれに文字列型("35.1" 等)で保存されていると、
+    // 数値計算（距離判定・半径比較）が正しく行われず、ボタンや音が一切
+    // 発火しなくなることがあるため、ここで確実に数値へ変換しておく。
+    const lat = Number(spot.lat), lng = Number(spot.lng);
+    let radius = Number(spot.radius);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)){
+      if (!warnedBadSpotIds.has(spot.id)){
+        warnedBadSpotIds.add(spot.id);
+        console.warn(`スタンプ地点「${spot.title || spot.id}」のlat/lngが不正です。Firestoreのデータを確認してください。`, spot);
+      }
+      continue;
+    }
+    if (!Number.isFinite(radius) || radius <= 0){
+      if (!warnedBadSpotIds.has(spot.id)){
+        warnedBadSpotIds.add(spot.id);
+        console.warn(`スタンプ地点「${spot.title || spot.id}」のradiusが未設定/不正です。既定値${DEFAULT_STAMP_RADIUS_M}mを使用します。Firestoreのradiusフィールドが数値型になっているか確認してください。`, spot);
+      }
+      radius = DEFAULT_STAMP_RADIUS_M;
+    }
+
+    const d = haversineMeters(latlng.lat, latlng.lng, lat, lng);
     if (d < nearestDist){ nearestDist = d; nearestSpot = spot; }
-    if (d <= spot.radius + accBonus){
-      showStampCaptureButton(spot);
+    if (d <= radius + accBonus){
+      if (document.visibilityState === 'hidden'){
+        if (!notifiedInRangeSpotIds.has(spot.id)){
+          notifiedInRangeSpotIds.add(spot.id);
+          showBackgroundStampNotification(spot, 0);
+        }
+      } else {
+        showStampCaptureButton(spot);
+      }
       approachedSpotIds.delete(spot.id);
       return;
     }
+    notifiedInRangeSpotIds.delete(spot.id);
   }
   hideStampCaptureButton();
 
@@ -1550,12 +1611,20 @@ function checkStampProximity(latlng, accuracy){
 
   // 捕獲範囲の少し手前まで近づいたら、音とトーストで知らせる（スポットごとに1回だけ）
   if (nearestSpot){
-    const approachRadius = nearestSpot.radius + accBonus + APPROACH_EXTRA_METERS;
+    const nearestRadius = Number.isFinite(Number(nearestSpot.radius)) && Number(nearestSpot.radius) > 0
+      ? Number(nearestSpot.radius) : DEFAULT_STAMP_RADIUS_M;
+    const approachRadius = nearestRadius + accBonus + APPROACH_EXTRA_METERS;
     if (nearestDist <= approachRadius){
       if (!approachedSpotIds.has(nearestSpot.id)){
         approachedSpotIds.add(nearestSpot.id);
-        playApproachSound();
-        showToast(`「${nearestSpot.title}」まで、あと約${Math.round(nearestDist)}m`);
+        if (document.visibilityState === 'hidden'){
+          // アプリを閉じている／裏に回している間は、音やトーストが気づかれないため
+          // 端末の通知（バイブ・通知音つき）でお知らせする
+          showBackgroundStampNotification(nearestSpot, nearestDist);
+        } else {
+          playApproachSound();
+          showToast(`「${nearestSpot.title}」まで、あと約${Math.round(nearestDist)}m`);
+        }
       }
     } else {
       approachedSpotIds.delete(nearestSpot.id);
@@ -1563,9 +1632,56 @@ function checkStampProximity(latlng, accuracy){
   }
 }
 
+/* =========================================================
+   スタンプラリー：アプリを裏に回している間の「近づいたお知らせ」
+   ・ブラウザ標準のNotification APIを使い、端末の通知（通知音・バイブ）で知らせる
+   ・注意：これはあくまで「アプリ/タブが裏で生き続けている間」だけ有効。
+   　OSがタブを完全に終了(強制終了・スワイプで消す等)させた場合は、
+   　Web技術の制約上、位置情報の監視自体が止まってしまうため検知できない。
+   　（常時バックグラウンドでの位置監視が必要な場合はネイティブアプリ化が必要）
+========================================================= */
+function requestStampNotificationPermission(){
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default'){
+    Notification.requestPermission().catch(() => {});
+  }
+}
+// 起動時、既にスタンプラリーに参加中なら通知許可をリクエストしておく
+if (isStampRallyActive()) requestStampNotificationPermission();
+
+async function showBackgroundStampNotification(spot, distanceMeters){
+  const title = distanceMeters > 0
+    ? `もうすぐスタンプ地点「${spot.title}」です`
+    : `スタンプ地点「${spot.title}」の近くにいます`;
+  const body = distanceMeters > 0
+    ? `あと約${Math.round(distanceMeters)}mです。アプリを開いてスタンプを獲得しましょう`
+    : 'アプリを開いてスタンプを獲得しましょう';
+
+  if (!('Notification' in window) || Notification.permission !== 'granted'){
+    return; // 通知の許可がない場合は何もできない（音を鳴らすAPIも裏では動作しないため）
+  }
+  try {
+    if ('serviceWorker' in navigator){
+      const reg = await navigator.serviceWorker.ready;
+      reg.showNotification(title, {
+        body,
+        icon: 'icon-192.png',
+        badge: 'icon-192.png',
+        tag: `stamp-${spot.id}`,
+        vibrate: [120, 60, 120]
+      });
+    } else {
+      new Notification(title, { body, icon: 'icon-192.png' });
+    }
+  } catch (err){
+    console.warn('バックグラウンド通知の表示に失敗:', err);
+  }
+}
+
 function playApproachSound(){
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -1631,6 +1747,7 @@ function setStampRallyActive(active, opts){
   try { localStorage.setItem(STAMP_RALLY_ACTIVE_KEY, active ? '1' : '0'); } catch (err){}
   if (active){
     try { localStorage.setItem(STAMP_RALLY_LAST_ACTIVE_KEY, String(Date.now())); } catch (err){}
+    requestStampNotificationPermission();
   } else {
     hideStampCaptureButton();
     approachedSpotIds.clear();
@@ -1706,7 +1823,8 @@ async function captureStamp(){
 
 function playStampSound(){
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
     const playTone = (freq, start, dur) => {
       const osc = ctx.createOscillator();
@@ -1847,12 +1965,19 @@ map.on('locationerror', (e) => {
 
 goToMyLocation(false);
 
-// スマホの画面を消した/アプリを裏に回した時はGPS追跡を止めて電池を節約し、
-// 戻ってきた時に地図タブを見ていれば追跡を再開する。
+// スマホの画面を消した/アプリを裏に回した時、スタンプラリーに参加中なら
+// 省電力(低精度)モードのままGPS追跡を継続し、近づいたら通知を送れるようにする。
+// （ただしOSやブラウザがタブ自体を完全に休止/終了させた場合は、Web技術の制約上
+// 検知できない。あくまで「アプリを裏に回している間」のベストエフォートとなる）
+// 参加していない場合は今まで通り追跡を止めて電池を節約する。
 // あわせて、長時間放置していた場合はスタンプラリーの自動離脱判定も行う。
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden'){
-    stopMyLocationWatch();
+    if (isStampRallyActive()){
+      startLocationWatch(false, false); // 低精度・省電力のまま裏でも位置監視を継続
+    } else {
+      stopMyLocationWatch();
+    }
   } else {
     checkStampRallyTimeoutAndMaybeLeave();
     if (isStampRallyActive()) recordStampRallyActivity();
@@ -2771,9 +2896,8 @@ const STAMP_FILES = [
 // Web Audio APIで「ピコン」という通知音を合成する（音声ファイル不要）
 function playPiconSound(){
   try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
+    const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
     const playTone = (freq, start, dur, peakGain) => {
       const osc = ctx.createOscillator();
