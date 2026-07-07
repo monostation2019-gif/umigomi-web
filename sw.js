@@ -1,5 +1,5 @@
 // キャッシュ名は更新のたびに必ず変える運用を推奨（変え忘れてもfetch戦略により自動更新は機能します）
-const CACHE_NAME = 'poisute-map-v4';
+const CACHE_NAME = 'poisute-map-v5';
 const APP_SHELL = [
   './index.html',
   './manifest.json'
@@ -7,7 +7,21 @@ const APP_SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
+    caches.open(CACHE_NAME).then((cache) => {
+      // addAll は1件でも取得失敗すると install 全体が失敗し、
+      // 新しいSWが永遠にインストールされない（＝自動更新が完全に止まる）
+      // 原因になるため、1件ずつ個別に試して失敗しても他に影響しないようにする。
+      // ここでの事前キャッシュはオフライン時のフォールバック用に過ぎず、
+      // 通常時のページ表示はfetchハンドラのネットワーク優先取得が担うので、
+      // 多少キャッシュに失敗しても実害はない。
+      return Promise.all(
+        APP_SHELL.map((path) =>
+          cache.add(path).catch((err) => {
+            console.warn('[sw] 事前キャッシュ失敗（無視して続行）:', path, err);
+          })
+        )
+      );
+    })
   );
   self.skipWaiting();
 });
@@ -19,6 +33,15 @@ self.addEventListener('activate', (event) => {
     )
   );
   self.clients.claim();
+});
+
+// index.html側の更新バナーから送られる SKIP_WAITING メッセージを受け取り、
+// 待機中のSWをすぐ有効化する。install時にskipWaiting()を呼んでいるため
+// 通常はreg.waitingが発生しないはずだが、念のための保険として実装しておく。
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {
