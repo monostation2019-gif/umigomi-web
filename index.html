@@ -1910,11 +1910,19 @@ let highAccuracyMode = false; // 今、高精度(GPSフル稼働)モードで追
 const HIGH_ACCURACY_TRIGGER_DIST = 300; // 未獲得スタンプまでこの距離以内で高精度モードへ
 const HIGH_ACCURACY_RELEASE_DIST = 450; // これより離れたら省電力モードへ戻す（チラつき防止のため少し余裕を持たせる）
 
+// Leafletの map.locate({watch:true, setView:true}) は、初回だけでなく
+// 位置が更新されるたび（＝watch中は継続的に）地図を現在地へ強制的に
+// 戻してしまう。これが「別の場所を見ようとしても現在地に戻ってしまう」
+// 原因だったため、setViewは常にfalseで呼び出し、地図を動かしたい時だけ
+// 次のlocationfound（1回だけ）で手動でsetViewするようにする。
+let recenterOnNextFix = false;
+
 function startLocationWatch(highAccuracy, setView){
   map.stopLocate();
   highAccuracyMode = highAccuracy;
+  if (setView) recenterOnNextFix = true;
   map.locate({
-    setView: !!setView,
+    setView: false,
     maxZoom: 16,
     enableHighAccuracy: highAccuracy,
     timeout: 20000,
@@ -1949,6 +1957,13 @@ map.on('locationfound', (e) => {
   myLocationMarker = L.circleMarker(e.latlng, {
     radius:8, color:'#fff', weight:3, fillColor:'#2F6FED', fillOpacity:1
   }).addTo(map);
+
+  // 地図を動かすのは「明示的に現在地へ戻ることを要求された直後」の
+  // 1回だけ。以降の位置更新では、ユーザーが見ている場所を勝手に動かさない。
+  if (recenterOnNextFix){
+    recenterOnNextFix = false;
+    map.setView(e.latlng, Math.max(map.getZoom(), 16));
+  }
 
   // GPSの精度が低い時はユーザーに知らせる（頻繁に出過ぎないよう20秒に1回まで）
   if (e.accuracy > 50 && Date.now() - lastAccuracyWarnAt > 20000){
