@@ -2268,7 +2268,7 @@ function ensureTimelineMap(){
   if (timelineMap) return;
   timelineMap = L.map('timelineMap', { zoomControl:false, attributionControl:false, scrollWheelZoom:false })
     .setView(DEFAULT_CENTER, 13);
-  L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', { maxZoom:18 }).addTo(timelineMap);
+  L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', { attribution:'地図: 国土地理院', maxZoom:18 }).addTo(timelineMap);
 }
 
 function renderTimeline(){
@@ -2652,7 +2652,7 @@ function ensureMiniMap(){
   miniMap = L.map('miniMap', {
     zoomControl:false, attributionControl:false, scrollWheelZoom:false
   }).setView(DEFAULT_CENTER, 15);
-  L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', { maxZoom:18 }).addTo(miniMap);
+  L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', { attribution:'地図: 国土地理院', maxZoom:18 }).addTo(miniMap);
   miniMarker = L.marker(DEFAULT_CENTER, { draggable:true }).addTo(miniMap);
   miniMarker.on('dragend', () => {
     const pos = miniMarker.getLatLng();
