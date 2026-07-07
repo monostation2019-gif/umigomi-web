@@ -171,6 +171,21 @@ input,textarea,select{font-family:inherit;}
   opacity:0; pointer-events:none; transition:all .25s; z-index:200;
 }
 .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+/* ---------- 一覧パネル：上に戻るボタン ---------- */
+.scroll-top-btn{
+  position:fixed; right:16px; bottom:calc(20px + var(--safe-bottom)); z-index:50;
+  width:46px; height:46px; border-radius:50%; border:none; background:var(--ink); color:#fff;
+  font-size:18px; box-shadow:0 4px 14px rgba(20,30,60,0.35);
+  opacity:0; transform:translateY(10px); pointer-events:none;
+  transition:opacity .2s ease, transform .2s ease;
+  display:flex; align-items:center; justify-content:center;
+}
+.scroll-top-btn.show{opacity:1; transform:translateY(0); pointer-events:auto;}
+
+/* ---------- ポップアップ内：一覧・編集へのジャンプ ---------- */
+.popup-jump{cursor:pointer;}
+.popup-jump .pj-link{color:var(--blue); font-size:11px; margin-top:2px; font-weight:700;}
 </style>
 </head>
 <body>
@@ -275,6 +290,7 @@ input,textarea,select{font-family:inherit;}
     <div id="listItems"></div>
     <div class="dm-note">📨 ユーザーへのDM機能は今後追加予定です</div>
   </div>
+  <button type="button" class="scroll-top-btn" id="scrollTopBtn" onclick="scrollListToTop()" aria-label="上に戻る">▲</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -472,13 +488,31 @@ function closeFormPanel(){
 
 function openListPanel(){
   closeFormPanel();
-  document.getElementById('listPanel').classList.remove('hidden');
+  const panel = document.getElementById('listPanel');
+  panel.classList.remove('hidden');
+  panel.scrollTop = 0;
+  document.getElementById('scrollTopBtn').classList.remove('show');
   renderList();
 }
 
 function closeListPanel(){
   document.getElementById('listPanel').classList.add('hidden');
+  document.getElementById('scrollTopBtn').classList.remove('show');
 }
+
+function scrollListToTop(){
+  document.getElementById('listPanel').scrollTo({ top:0, behavior:'smooth' });
+}
+
+/* 一覧パネルを下にスクロールしたら「上に戻る」ボタンを表示 */
+(function setupListScrollTopButton(){
+  const panel = document.getElementById('listPanel');
+  const btn = document.getElementById('scrollTopBtn');
+  panel.addEventListener('scroll', () => {
+    if (panel.scrollTop > 200) btn.classList.add('show');
+    else btn.classList.remove('show');
+  });
+})();
 
 /* =========================================================
    写真の圧縮（index.htmlと同じ方式：正方形にクロップしてJPEG化 → base64）
@@ -678,7 +712,7 @@ function watchGomiReports(){
     allGomiReports.forEach(r => {
       if (!r.location) return;
       const marker = L.marker([r.location.latitude, r.location.longitude]);
-      marker.bindPopup(`${r.emoji || '🗑️'} ${r.itemType || ''}`);
+      marker.bindPopup(`<div class="popup-jump" onclick="editGomi('${r.id}')">${r.emoji || '🗑️'} ${escapeHtml(r.itemType || '')}<div class="pj-link">タップで編集・打ち直し →</div></div>`);
       marker.addTo(gomiMarkersLayer);
     });
     if (!document.getElementById('listPanel').classList.contains('hidden') && currentListTab === 'gomi') renderList();
@@ -691,7 +725,7 @@ function watchStampSpots(){
     stampMarkersLayer.clearLayers();
     allStampSpots.forEach(s => {
       const marker = L.marker([s.lat, s.lng], { icon: stampIconAdmin });
-      marker.bindPopup(`<b>${s.title}</b><br>半径${s.radius}m`);
+      marker.bindPopup(`<div class="popup-jump" onclick="editStamp('${s.id}')"><b>${escapeHtml(s.title)}</b><br>半径${s.radius}m<div class="pj-link">タップで編集・打ち直し →</div></div>`);
       marker.addTo(stampMarkersLayer);
     });
     if (!document.getElementById('listPanel').classList.contains('hidden') && currentListTab === 'stamp') renderList();
@@ -768,6 +802,7 @@ function locateItem(lat, lng){
 function editGomi(id){
   const r = allGomiReports.find(x => x.id === id);
   if (!r || !r.location){ showToast('位置情報が見つかりません'); return; }
+  adminMap.closePopup();
   closeListPanel();
   closeFormPanel();
 
@@ -796,6 +831,7 @@ function editGomi(id){
 function editStamp(id){
   const s = allStampSpots.find(x => x.id === id);
   if (!s){ showToast('データが見つかりません'); return; }
+  adminMap.closePopup();
   closeListPanel();
   closeFormPanel();
 
