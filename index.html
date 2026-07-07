@@ -132,6 +132,17 @@ header{
 .stamp-book-title{font-size:10.5px; color:var(--muted); text-align:center; line-height:1.3;}
 .stamp-book-progress{font-size:12.5px; color:var(--muted); margin:2px 0 0;}
 
+/* ---------- スタンプラリー：離脱／再参加ボタン ---------- */
+.stamp-rally-toggle-row{display:flex; flex-direction:column; gap:8px;}
+.stamp-rally-status-text{margin:0; font-size:12px; color:var(--muted); line-height:1.5;}
+.stamp-rally-toggle-btn{
+  border:1.5px solid var(--line); background:#fff; color:var(--muted);
+  border-radius:12px; padding:10px 14px; font-size:13px; font-weight:700;
+  font-family:"Noto Sans JP", sans-serif; align-self:flex-start;
+}
+.stamp-rally-toggle-btn:active{transform:scale(0.97);}
+.stamp-rally-toggle-btn.rejoin{border-color:var(--teal); color:var(--teal); background:#E9F7F4;}
+
 .mentor-chip{
   position:absolute; top:14px; left:14px; right:70px; z-index:15;
   background:var(--card); border-radius:16px; padding:10px 12px;
@@ -648,6 +659,16 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
     </div>
     <div class="list-row" onclick="openSettingsSheet()">
       <div class="l">⚙️ <span>設定</span></div><span>›</span>
+    </div>
+  </div>
+
+  <div class="card" id="stampRallyCard">
+    <div class="section-label-row" style="margin-bottom:8px;">
+      <label style="color:var(--muted); font-weight:700; font-size:12px;">スタンプラリー</label>
+    </div>
+    <div class="stamp-rally-toggle-row">
+      <p class="stamp-rally-status-text" id="stampRallyStatusText">参加中：近づくと音とボタンでお知らせします</p>
+      <button type="button" class="stamp-rally-toggle-btn" id="stampRallyToggleBtn" onclick="onStampRallyToggleClick()">スタンプラリーから離脱する</button>
     </div>
   </div>
 
@@ -1471,6 +1492,8 @@ const stampIcon = L.icon({
 let collectedStampIds = new Set();
 let currentNearbySpot = null;
 let stampLayer = null;
+let approachedSpotIds = new Set(); // 「接近中」の音を鳴らし済みのスポット（同じ場所で何度も鳴らさないため）
+const APPROACH_EXTRA_METERS = 80;  // 捕獲判定の半径＋このぶん手前に入ったら接近音を鳴らす
 
 function haversineMeters(lat1, lng1, lat2, lng2){
   const R = 6371000;
@@ -1494,18 +1517,69 @@ function renderStampMarkers(){
   });
 }
 
-function checkStampProximity(latlng){
+function checkStampProximity(latlng, accuracy){
   if (!currentUser) return;
+  if (!isStampRallyActive()){ hideStampCaptureButton(); return; } // 離脱中は判定・通知を一切行わない
   if (activeFilter !== 'all' && activeFilter !== 'stamp'){ hideStampCaptureButton(); return; }
+
+  // GPSの誤差(accuracy)が大きい時は、その誤差分だけ捕獲判定の半径を広げて救済する
+  // （現在地がズレていても「実際は近くにいるはず」という前提でスタンプが取れるようにする）
+  const accBonus = (typeof accuracy === 'number' && accuracy > 30) ? Math.min(accuracy, 100) : 0;
+
+  let nearestSpot = null, nearestDist = Infinity;
   for (const spot of STAMP_SPOTS){
     if (collectedStampIds.has(spot.id)) continue;
     const d = haversineMeters(latlng.lat, latlng.lng, spot.lat, spot.lng);
-    if (d <= spot.radius){
+    if (d < nearestDist){ nearestDist = d; nearestSpot = spot; }
+    if (d <= spot.radius + accBonus){
       showStampCaptureButton(spot);
+      approachedSpotIds.delete(spot.id);
       return;
     }
   }
   hideStampCaptureButton();
+
+  // 未獲得のスタンプに近づいたら高精度(GPSフル稼働)モードへ、離れたら省電力モードへ自動で切り替える
+  if (nearestSpot){
+    if (!highAccuracyMode && nearestDist <= HIGH_ACCURACY_TRIGGER_DIST){
+      startLocationWatch(true, false);
+    } else if (highAccuracyMode && nearestDist > HIGH_ACCURACY_RELEASE_DIST){
+      startLocationWatch(false, false);
+    }
+  }
+
+  // 捕獲範囲の少し手前まで近づいたら、音とトーストで知らせる（スポットごとに1回だけ）
+  if (nearestSpot){
+    const approachRadius = nearestSpot.radius + accBonus + APPROACH_EXTRA_METERS;
+    if (nearestDist <= approachRadius){
+      if (!approachedSpotIds.has(nearestSpot.id)){
+        approachedSpotIds.add(nearestSpot.id);
+        playApproachSound();
+        showToast(`「${nearestSpot.title}」まで、あと約${Math.round(nearestDist)}m`);
+      }
+    } else {
+      approachedSpotIds.delete(nearestSpot.id);
+    }
+  }
+}
+
+function playApproachSound(){
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 1046.5; // 単発の「ピン」という高めの通知音
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.28, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.4);
+  } catch (err){
+    console.warn('接近通知音の再生に失敗:', err);
+  }
 }
 
 function showStampCaptureButton(spot){
@@ -1519,6 +1593,96 @@ function hideStampCaptureButton(){
   currentNearbySpot = null;
   document.getElementById('stampCaptureBtn').classList.add('hidden');
 }
+
+/* =========================================================
+   スタンプラリー：自分から離脱／再参加、および
+   一定時間操作がない場合の自動離脱（勝手な通知音を防ぐ）
+========================================================= */
+const STAMP_RALLY_ACTIVE_KEY = 'stampRally_active';
+const STAMP_RALLY_LAST_ACTIVE_KEY = 'stampRally_lastActiveAt';
+const STAMP_RALLY_INACTIVITY_MS = 3 * 60 * 60 * 1000; // この時間、操作がなければ自動離脱扱いにする（現在3時間）
+
+function isStampRallyActive(){
+  // localStorageが使えない環境（プライベートモード等）でも例外で落ちないようにする
+  try {
+    return localStorage.getItem(STAMP_RALLY_ACTIVE_KEY) !== '0'; // 未設定（初回）はデフォルトで「参加中」
+  } catch (err){
+    return true;
+  }
+}
+
+function recordStampRallyActivity(){
+  // 自分から離脱している間は、操作しても勝手に再参加扱いにはしない（再参加は明示的なボタン操作のみ）
+  if (!isStampRallyActive()) return;
+  try { localStorage.setItem(STAMP_RALLY_LAST_ACTIVE_KEY, String(Date.now())); } catch (err){}
+}
+
+function checkStampRallyTimeoutAndMaybeLeave(){
+  if (!isStampRallyActive()) return;
+  let lastActive = 0;
+  try { lastActive = parseInt(localStorage.getItem(STAMP_RALLY_LAST_ACTIVE_KEY) || '0', 10); } catch (err){}
+  if (lastActive && (Date.now() - lastActive) > STAMP_RALLY_INACTIVITY_MS){
+    setStampRallyActive(false, { silent:true, reason:'timeout' });
+  }
+}
+
+function setStampRallyActive(active, opts){
+  opts = opts || {};
+  try { localStorage.setItem(STAMP_RALLY_ACTIVE_KEY, active ? '1' : '0'); } catch (err){}
+  if (active){
+    try { localStorage.setItem(STAMP_RALLY_LAST_ACTIVE_KEY, String(Date.now())); } catch (err){}
+  } else {
+    hideStampCaptureButton();
+    approachedSpotIds.clear();
+  }
+  renderStampRallyUI();
+  if (!opts.silent){
+    showToast(active ? 'スタンプラリーに再参加しました' : 'スタンプラリーから離脱しました。以後、接近通知は届きません');
+  }
+}
+
+function onStampRallyToggleClick(){
+  if (isStampRallyActive()){
+    const ok = confirm('スタンプラリーから離脱しますか？\n以後、スタンプ地点に近づいた時の通知（音・ボタン表示）が出なくなります。\n（獲得済みのスタンプは消えません。いつでも再参加できます）');
+    if (ok) setStampRallyActive(false);
+  } else {
+    setStampRallyActive(true);
+  }
+}
+
+function renderStampRallyUI(){
+  const btn = document.getElementById('stampRallyToggleBtn');
+  const text = document.getElementById('stampRallyStatusText');
+  if (!btn || !text) return;
+  if (isStampRallyActive()){
+    btn.textContent = 'スタンプラリーから離脱する';
+    btn.classList.remove('rejoin');
+    text.textContent = '参加中：スタンプ地点に近づくと音とボタンでお知らせします';
+  } else {
+    btn.textContent = 'スタンプラリーに再参加する';
+    btn.classList.add('rejoin');
+    text.textContent = '離脱中：接近通知は届きません（長時間操作がなかった場合も自動でこの状態になります）';
+  }
+}
+
+// アプリ起動時に、放置時間をチェックして必要なら自動離脱させる
+checkStampRallyTimeoutAndMaybeLeave();
+if (isStampRallyActive()) recordStampRallyActivity();
+renderStampRallyUI();
+
+// ある程度の操作（タップ）があるたびに「最終操作時刻」を更新する（頻度は1分に1回まで）
+let lastActivityRecordAt = 0;
+['click', 'touchstart'].forEach(evt => {
+  document.addEventListener(evt, () => {
+    const now = Date.now();
+    if (now - lastActivityRecordAt > 60000){
+      lastActivityRecordAt = now;
+      recordStampRallyActivity();
+    }
+  }, { passive:true });
+});
+
+
 
 async function captureStamp(){
   if (!currentNearbySpot || !currentUser) return;
@@ -1621,15 +1785,43 @@ let markersLayer = L.layerGroup().addTo(map);
 stampLayer = L.layerGroup().addTo(map);
 renderStampMarkers();
 
-/* ---- 現在地の自動取得 ---- */
+/* ---- 現在地の自動取得（省電力を意識した設計） ---- */
 let myLocationMarker = null;
 let myAccuracyCircle = null;
+let highAccuracyMode = false; // 今、高精度(GPSフル稼働)モードで追跡中かどうか
+const HIGH_ACCURACY_TRIGGER_DIST = 300; // 未獲得スタンプまでこの距離以内で高精度モードへ
+const HIGH_ACCURACY_RELEASE_DIST = 450; // これより離れたら省電力モードへ戻す（チラつき防止のため少し余裕を持たせる）
 
-function goToMyLocation(showFeedback){
-  if (showFeedback) showToast('現在地を取得中…');
-  map.locate({ setView:true, maxZoom:16, enableHighAccuracy:true, timeout:8000 });
+function startLocationWatch(highAccuracy, setView){
+  map.stopLocate();
+  highAccuracyMode = highAccuracy;
+  map.locate({
+    setView: !!setView,
+    maxZoom: 16,
+    enableHighAccuracy: highAccuracy,
+    timeout: 20000,
+    // 省電力モードでは多少古い位置情報のキャッシュも許容し、GPSの起動回数自体を減らす
+    maximumAge: highAccuracy ? 0 : 15000,
+    watch: true
+  });
 }
 
+function goToMyLocation(showFeedback){
+  if (showFeedback){
+    showToast('現在地を再取得中…');
+    // ボタンを押した時（ユーザーが精度を求めている時）だけ高精度モードで取り直す
+    startLocationWatch(true, true);
+  } else {
+    // 通常時は低精度・省電力で追跡開始（スタンプに近づいたら自動で高精度へ切り替わる）
+    startLocationWatch(false, true);
+  }
+}
+
+function stopMyLocationWatch(){
+  map.stopLocate();
+}
+
+let lastAccuracyWarnAt = 0;
 map.on('locationfound', (e) => {
   if (myLocationMarker) map.removeLayer(myLocationMarker);
   if (myAccuracyCircle) map.removeLayer(myAccuracyCircle);
@@ -1639,7 +1831,14 @@ map.on('locationfound', (e) => {
   myLocationMarker = L.circleMarker(e.latlng, {
     radius:8, color:'#fff', weight:3, fillColor:'#2F6FED', fillOpacity:1
   }).addTo(map);
-  checkStampProximity(e.latlng);
+
+  // GPSの精度が低い時はユーザーに知らせる（頻繁に出過ぎないよう20秒に1回まで）
+  if (e.accuracy > 50 && Date.now() - lastAccuracyWarnAt > 20000){
+    lastAccuracyWarnAt = Date.now();
+    showToast(`GPSの精度が低いです（誤差約${Math.round(e.accuracy)}m）。屋外の開けた場所でお試しください`);
+  }
+
+  checkStampProximity(e.latlng, e.accuracy);
 });
 
 map.on('locationerror', (e) => {
@@ -1647,6 +1846,27 @@ map.on('locationerror', (e) => {
 });
 
 goToMyLocation(false);
+
+// スマホの画面を消した/アプリを裏に回した時はGPS追跡を止めて電池を節約し、
+// 戻ってきた時に地図タブを見ていれば追跡を再開する。
+// あわせて、長時間放置していた場合はスタンプラリーの自動離脱判定も行う。
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden'){
+    stopMyLocationWatch();
+  } else {
+    checkStampRallyTimeoutAndMaybeLeave();
+    if (isStampRallyActive()) recordStampRallyActivity();
+    renderStampRallyUI();
+    const mapWrap = document.getElementById('map-wrap');
+    const mapViewActive = mapWrap && !mapWrap.classList.contains('hidden');
+    if (mapViewActive) goToMyLocation(false);
+  }
+});
+
+// アプリを開きっぱなしにしていた場合の保険として、15分おきにも放置判定をチェックする
+setInterval(() => {
+  if (document.visibilityState === 'visible') checkStampRallyTimeoutAndMaybeLeave();
+}, 15 * 60 * 1000);
 
 const LocateControl = L.Control.extend({
   options:{ position:'bottomright' },
@@ -2449,15 +2669,44 @@ function ensureMiniMap(){
 
 function locateMe(){
   if (!navigator.geolocation){ showToast('この端末では位置情報を取得できません'); return; }
-  navigator.geolocation.getCurrentPosition(pos => {
+  showToast('現在地を測定中…（数秒お待ちください）');
+
+  // 1回だけの取得だと最初の不正確な値をつかんでしまうことがあるため、
+  // 数秒間 watchPosition で複数回サンプリングし、精度が一番良かった値を採用する
+  let best = null;
+  let watchId = null;
+  let finished = false;
+
+  const applyPosition = (pos) => {
     const latlng = [pos.coords.latitude, pos.coords.longitude];
     selectedLocation = { lat: latlng[0], lng: latlng[1] };
     if (miniMap){ miniMap.setView(latlng, 17); miniMarker.setLatLng(latlng); }
     updateSubmitState();
+  };
+
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    if (best){
+      applyPosition(best);
+      showToast(`現在地を設定しました（誤差約${Math.round(best.coords.accuracy)}m）。ズレていればピンをドラッグして調整してください`);
+    } else {
+      showToast('現在地を取得できませんでした。ピンをドラッグして設定してください');
+    }
+  };
+
+  watchId = navigator.geolocation.watchPosition(pos => {
+    if (!best || pos.coords.accuracy < best.coords.accuracy){
+      best = pos;
+      applyPosition(pos); // より精度の良い値が来るたびにピンを更新していく
+    }
+    if (pos.coords.accuracy <= 15) finish(); // 十分な精度が出たら早めに確定する
   }, err => {
     console.error(err);
-    showToast('現在地を取得できませんでした。ピンをドラッグして設定してください');
-  }, { enableHighAccuracy:true, timeout:8000 });
+  }, { enableHighAccuracy:true, maximumAge:0, timeout:10000 });
+
+  setTimeout(finish, 8000); // 最大8秒待って、その間で一番良かった値を採用する
 }
 
 function onPhotoSelected(e){
@@ -2649,9 +2898,10 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     document.getElementById('filterBar').style.display = (target === 'map') ? '' : 'none';
     if (target === 'ranking') renderRanking();
     if (target === 'timeline') renderTimeline();
-    if (target === 'map') goToMyLocation(false);
+    if (target === 'map') goToMyLocation(false); else stopMyLocationWatch();
     if (target === 'mypage' && currentUser) loadMyStats(currentUser.uid);
     if (target === 'mypage') renderStampBook();
+    if (target === 'mypage') renderStampRallyUI();
   });
 });
 
