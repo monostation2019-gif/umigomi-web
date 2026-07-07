@@ -1920,7 +1920,11 @@ function computeRanking(tab){
   }
 
   allReports.filter(({ d }) => isThisMonth(d)).forEach(({ d }) => {
-    const key = tab === 'town' ? (d.area && d.area.town) : (d.area && d.area.gakku);
+    const town = d.area && d.area.town;
+    // 学区別は保存済みの area.gakku ではなく、町名から毎回 mapTownToGakku() で
+    // 判定する。学区対応表(GAKKU_MAP)を更新しても、過去の投稿データを
+    // Firestore側で書き換えなくてもすぐに反映されるようにするため。
+    const key = tab === 'town' ? town : mapTownToGakku(town);
     if (!key) return;
     if (!counts.has(key)) counts.set(key, { label:key, count:0 });
     counts.get(key).count++;
@@ -2218,7 +2222,7 @@ function closeUserDetailSheet(){
 function computeZukanBreakdown(tab, key){
   const counts = new Map();
   allReports.forEach(({ d }) => {
-    const match = tab === 'town' ? (d.area && d.area.town === key) : (d.area && d.area.gakku === key);
+    const match = tab === 'town' ? (d.area && d.area.town === key) : (mapTownToGakku(d.area && d.area.town) === key);
     if (!match) return;
     const type = d.itemType || 'その他';
     if (!counts.has(type)){
