@@ -93,6 +93,7 @@ header{
 }
 .filter-chip .fe{font-size:13px;}
 .filter-chip.active{border-color:var(--blue); color:var(--blue); background:#EAF1FF;}
+.filter-chip.stamp-chip.active{border-color:var(--teal); color:var(--teal); background:#E9F7F4;}
 
 /* ---------- Main content area (header と nav の間) ---------- */
 #main-content{position:relative; flex:1; min-height:0;}
@@ -948,6 +949,7 @@ const db = firebase.firestore();
 const storage = firebase.storage();
 
 let currentUser = null;
+let activeFilter = 'all'; // ゴミ種類フィルター（'all' / 各itemType / 'stamp'）。スタンプ地点の表示判定でも使うため早めに宣言。
 auth.onAuthStateChanged(user => {
   if (user) {
     currentUser = user;
@@ -1482,6 +1484,9 @@ function haversineMeters(lat1, lng1, lat2, lng2){
 function renderStampMarkers(){
   if (!stampLayer) return;
   stampLayer.clearLayers();
+  // 「すべて」または「スタンプラリー」表示中はスタンプを表示。
+  // ペットボトルなど特定のゴミ種類で絞り込んでいる時はスタンプも非表示にする。
+  if (activeFilter !== 'all' && activeFilter !== 'stamp') return;
   STAMP_SPOTS.forEach(spot => {
     const got = collectedStampIds.has(spot.id);
     const marker = L.marker([spot.lat, spot.lng], { icon: stampIcon }).addTo(stampLayer);
@@ -1491,6 +1496,7 @@ function renderStampMarkers(){
 
 function checkStampProximity(latlng){
   if (!currentUser) return;
+  if (activeFilter !== 'all' && activeFilter !== 'stamp'){ hideStampCaptureButton(); return; }
   for (const spot of STAMP_SPOTS){
     if (collectedStampIds.has(spot.id)) continue;
     const d = haversineMeters(latlng.lat, latlng.lng, spot.lat, spot.lng);
@@ -1762,7 +1768,6 @@ function navigateToDetail(){
 }
 
 let allReports = [];
-let activeFilter = 'all';
 
 function renderMarkers(){
   markersLayer.clearLayers();
@@ -1779,6 +1784,7 @@ function renderMarkers(){
   });
   if (heatLayer) map.removeLayer(heatLayer);
   heatLayer = L.heatLayer(heatPoints, { radius:32, blur:24, maxZoom:16 }).addTo(map);
+  renderStampMarkers();
   renderRanking();
   const timelineViewEl = document.getElementById('view-timeline');
   if (timelineViewEl && !timelineViewEl.classList.contains('hidden')) renderTimeline();
@@ -2360,6 +2366,13 @@ function renderFilterBar(){
   const bar = document.getElementById('filterBar');
   if (!bar) return;
   bar.innerHTML = '';
+
+  const stampChip = document.createElement('button');
+  stampChip.type = 'button';
+  stampChip.className = 'filter-chip stamp-chip';
+  stampChip.innerHTML = `<span class="fe">🏅</span><span class="fl">スタンプラリー</span>`;
+  stampChip.onclick = () => setActiveFilter('stamp', stampChip);
+  bar.appendChild(stampChip);
 
   const allChip = document.createElement('button');
   allChip.type = 'button';
