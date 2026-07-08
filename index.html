@@ -1543,6 +1543,11 @@ function loadStampSpots(){
     STAMP_SPOTS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderStampMarkers();
     renderStampBook();
+    // STAMP_SPOTSの読み込み・更新が完了した直後、直近のGPS位置が分かっていれば
+    // その場で近接判定をやり直す。これをしないと「実は既にスタンプの捕獲範囲内に
+    // いたのに、STAMP_SPOTSの読み込みが間に合わずボタンが出ない」まま、次のGPS更新
+    // （数十秒〜、同じ場所にいると更新が来ないことも）まで取得できなくなってしまう。
+    if (lastKnownLatLng) checkStampProximity(lastKnownLatLng, lastKnownAccuracy);
   }, err => console.warn('スタンプ地点の読み込みに失敗:', err));
 }
 loadStampSpots();
@@ -1559,6 +1564,12 @@ let currentNearbySpot = null;
 let stampLayer = null;
 let approachedSpotIds = new Set(); // 「接近中」の音を鳴らし済みのスポット（同じ場所で何度も鳴らさないため）
 const APPROACH_EXTRA_METERS = 80;  // 捕獲判定の半径＋このぶん手前に入ったら接近音を鳴らす
+// 直近のGPS位置を常に保持しておく。STAMP_SPOTSがFirestoreから非同期で
+// 届いた時に、この位置を使って即座に近接判定をやり直すために使う
+// （これがないと「STAMP_SPOTSの読み込みが完了した瞬間、実はもうスタンプの真上にいた」
+// というケースで、次にGPSが更新されるまでボタンが出ないという不具合が起きる）
+let lastKnownLatLng = null;
+let lastKnownAccuracy = null;
 
 /* ---- 効果音用の共有AudioContext ----
    毎回 new AudioContext() を作ると、スマホのブラウザでは「ユーザー操作なしに
@@ -2037,6 +2048,9 @@ map.on('locationfound', (e) => {
   }
 
   checkStampProximity(e.latlng, e.accuracy);
+  // 次にSTAMP_SPOTSが更新された時、即座に近接判定をやり直せるよう常に保存しておく
+  lastKnownLatLng = e.latlng;
+  lastKnownAccuracy = e.accuracy;
   fetchHomeWeatherOnce(e.latlng.lat, e.latlng.lng);
 });
 
