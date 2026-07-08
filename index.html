@@ -3075,20 +3075,26 @@ function scrollViewToTop(viewId){
   const view = document.getElementById(viewId);
   if (view) view.scrollTo({ top: 0, behavior: 'smooth' });
 }
-(function initScrollTopButtons(){
-  const pairs = [
-    { viewId: 'view-ranking', btnId: 'rankingScrollTopBtn' },
-    { viewId: 'view-mypage', btnId: 'mypageScrollTopBtn' }
-  ];
-  pairs.forEach(({ viewId, btnId }) => {
+const SCROLL_TOP_BTN_VIEW_IDS = ['view-ranking', 'view-mypage'];
+function initScrollTopButtons(){
+  SCROLL_TOP_BTN_VIEW_IDS.forEach((viewId) => {
     const view = document.getElementById(viewId);
-    const btn = document.getElementById(btnId);
-    if (!view || !btn) return;
-    view.addEventListener('scroll', () => {
-      btn.classList.toggle('show', view.scrollTop > 240);
-    }, { passive: true });
+    if (!view) return;
+    // idの取り違え・衝突を避けるため、そのビュー配下から直接ボタンを探す
+    const btn = view.querySelector(':scope > .scroll-top-btn');
+    if (!btn || btn.dataset.scrollTopBound === '1') return;
+    btn.dataset.scrollTopBound = '1';
+    const update = () => btn.classList.toggle('show', view.scrollTop > 80);
+    view.addEventListener('scroll', update, { passive: true });
+    // タブ切替や再描画で表示された直後にも現在のスクロール位置を反映しておく
+    update();
   });
-})();
+}
+initScrollTopButtons();
+// 描画やビュー切替のたびに、ボタンが正しく紐づいているか再確認する（保険）
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => setTimeout(initScrollTopButtons, 0));
+});
 
 /* =========================================================
    デバッグ用：捕捉されなかったエラーを画面に表示
