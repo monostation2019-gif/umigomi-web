@@ -282,6 +282,11 @@ nav.bottom button.active{color:var(--blue); font-weight:700;}
   background:#FDE7E4; color:var(--red); font-weight:700; font-size:12px;
   font-family:"Noto Sans JP", sans-serif;
 }
+.popup-undo-btn{
+  width:100%; margin-top:10px; border:none; border-radius:10px; padding:9px;
+  background:#FDF3D0; color:#8A6B10; font-weight:700; font-size:12px;
+  font-family:"Noto Sans JP", sans-serif;
+}
 .popup-protect-btn{
   width:100%; margin-top:10px; border:none; border-radius:10px; padding:11px;
   background:var(--teal); color:#fff; font-weight:700; font-size:13px;
@@ -307,6 +312,13 @@ nav.bottom button.active{color:var(--blue); font-weight:700;}
 .popup-confirm-btn{
   border:none; border-radius:10px;
   background:var(--amber); color:#fff; font-weight:700; font-size:13px;
+  font-family:"Noto Sans JP", sans-serif;
+}
+.detail-actions-row .popup-undo-confirm-btn{
+  flex:1 1 0; width:auto; margin-top:0; padding:11px 4px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  border:none; border-radius:10px;
+  background:#FDF3D0; color:#8A6B10; font-weight:700; font-size:13px;
   font-family:"Noto Sans JP", sans-serif;
 }
 
@@ -2108,8 +2120,10 @@ function escapeHtml(str){
 
 /* ---- ゴミ詳細ボトムシート ---- */
 let detailLocation = null;
+let detailCurrentId = null;
 
 function openDetailSheet(d, id){
+  detailCurrentId = id;
   const itemDef = findItemType(d.itemType);
   const emoji = d.emoji || (itemDef && itemDef.emoji) || '🗑️';
   document.getElementById('detailEmoji').textContent = emoji;
@@ -2138,15 +2152,6 @@ function openDetailSheet(d, id){
     statusEl.style.display = 'none';
   }
 
-  const confirmCountEl = document.getElementById('detailConfirmCount');
-  const confirmCount = d.confirmCount || 0;
-  if (confirmCount > 0){
-    confirmCountEl.textContent = `👀 現地確認：${confirmCount}回`;
-    confirmCountEl.style.display = '';
-  } else {
-    confirmCountEl.style.display = 'none';
-  }
-
   const commentBlock = document.getElementById('detailCommentBlock');
   if (d.comment){
     document.getElementById('detailComment').textContent = d.comment;
@@ -2163,28 +2168,56 @@ function openDetailSheet(d, id){
     photoEl.style.display = 'none';
   }
 
+  refreshDetailDynamic(d, id);
+
+  detailLocation = (d.location) ? { lat: d.location.latitude, lng: d.location.longitude } : null;
+
+
+  document.getElementById('detailSheetBackdrop').classList.add('open');
+}
+
+/**
+ * 詳細シートのうち、状況に応じて変化する部分（確認回数表示・アクションボタン）を再描画する。
+ * confirmReport/unconfirmReport/protectReport/unprotectReportの実行後に、
+ * シートを閉じずにその場で最新状態を反映するために使う。
+ */
+function refreshDetailDynamic(d, id){
+  const confirmCountEl = document.getElementById('detailConfirmCount');
+  const confirmedByArr = Array.isArray(d.confirmedBy) ? d.confirmedBy : [];
+  const confirmCount = confirmedByArr.length || d.confirmCount || 0;
+  if (confirmCount > 0){
+    confirmCountEl.textContent = `👀 現地確認：${confirmCount}回`;
+    confirmCountEl.style.display = '';
+  } else {
+    confirmCountEl.style.display = 'none';
+  }
+
   const isOwner = !!(currentUser && d.reportedBy === currentUser.uid);
   const isProtected = d.status === 'protected';
+  const iConfirmed = !!(currentUser && confirmedByArr.includes(currentUser.uid));
   const actionsWrap = document.getElementById('detailRedoWrap');
   let actionsHtml = '';
   if (isOwner && !isProtected){
     actionsHtml += `<button class="popup-redo-btn" onclick="redoReport('${id}')">↺ 削除してやり直す</button>`;
   }
   if (!isProtected && currentUser && !isOwner){
+    const confirmBtnHtml = iConfirmed
+      ? `<button class="popup-undo-confirm-btn" onclick="unconfirmReport('${id}')">↺ 確認をやり直す</button>`
+      : `<button class="popup-confirm-btn" onclick="confirmReport('${id}')">👀 現地で確認</button>`;
     actionsHtml += `<div class="detail-actions-row">
-      <button class="popup-confirm-btn" onclick="confirmReport('${id}')">👀 現地で確認</button>
+      ${confirmBtnHtml}
       <button class="popup-protect-btn" onclick="protectReport('${id}')">✅ 回収する（保護）</button>
     </div>`;
   }
+  if (isProtected && currentUser && d.protectedBy === currentUser.uid){
+    actionsHtml += `<button class="popup-undo-btn" onclick="unprotectReport('${id}')">↺ 回収を取り消して元に戻す</button>`;
+  }
   actionsWrap.innerHTML = actionsHtml;
-
-  detailLocation = (d.location) ? { lat: d.location.latitude, lng: d.location.longitude } : null;
-
-  document.getElementById('detailSheetBackdrop').classList.add('open');
 }
 
 function closeDetailSheet(){
   document.getElementById('detailSheetBackdrop').classList.remove('open');
+  detailCurrentId = null;
 }
 
 function navigateToDetail(){
@@ -2247,7 +2280,8 @@ async function redoReport(id){
 /**
  * 現地でゴミがまだある事を確認した時に押すボタン。
  * ピンは削除・保護されず、確認回数（confirmCount）だけが加算される。
- * 保護（回収）とは独立した操作。
+ * 保護（回収）とは独立した操作。誰が確認済みかをconfirmedByに記録し、
+ * 間違って押した場合は本人だけがunconfirmReportでやり直せる。
  */
 async function confirmReport(id){
   if (!currentUser){ showToast('ログインすると現地確認ができます'); return; }
@@ -2257,21 +2291,52 @@ async function confirmReport(id){
     showToast('自分の投稿は確認できません');
     return;
   }
+  const confirmedByArr = Array.isArray(target.d.confirmedBy) ? target.d.confirmedBy : [];
+  if (confirmedByArr.includes(currentUser.uid)){
+    showToast('すでに現地確認済みです');
+    return;
+  }
   try {
     await db.collection('reports').doc(id).update({
-      confirmCount: firebase.firestore.FieldValue.increment(1)
+      confirmCount: firebase.firestore.FieldValue.increment(1),
+      confirmedBy: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
     });
-    // サーバー往復を待たずに画面上の確認回数をその場で更新
+    // サーバー往復を待たずに画面上をその場で更新
     target.d.confirmCount = (target.d.confirmCount || 0) + 1;
-    const confirmCountEl = document.getElementById('detailConfirmCount');
-    if (confirmCountEl){
-      confirmCountEl.textContent = `👀 現地確認：${target.d.confirmCount}回`;
-      confirmCountEl.style.display = '';
-    }
+    target.d.confirmedBy = [...confirmedByArr, currentUser.uid];
+    if (detailCurrentId === id) refreshDetailDynamic(target.d, id);
     showToast('確認ありがとうございます！');
   } catch(err){
     console.error('確認処理エラー:', err);
     showToast('確認処理に失敗しました。もう一度お試しください');
+  }
+}
+
+/**
+ * 間違って「現地で確認」を押してしまった場合に、その確認を取り消す（やり直す）。
+ * 自分が確認済みの場合のみ取り消せる。ピンや保護状態には影響しない。
+ */
+async function unconfirmReport(id){
+  if (!currentUser){ showToast('ログインすると取り消しができます'); return; }
+  const target = allReports.find(r => r.id === id);
+  if (!target) return;
+  const confirmedByArr = Array.isArray(target.d.confirmedBy) ? target.d.confirmedBy : [];
+  if (!confirmedByArr.includes(currentUser.uid)){
+    showToast('確認記録が見つかりませんでした');
+    return;
+  }
+  try {
+    await db.collection('reports').doc(id).update({
+      confirmCount: firebase.firestore.FieldValue.increment(-1),
+      confirmedBy: firebase.firestore.FieldValue.arrayRemove(currentUser.uid)
+    });
+    target.d.confirmCount = Math.max(0, (target.d.confirmCount || 1) - 1);
+    target.d.confirmedBy = confirmedByArr.filter(uid => uid !== currentUser.uid);
+    if (detailCurrentId === id) refreshDetailDynamic(target.d, id);
+    showToast('現地確認をやり直しました');
+  } catch(err){
+    console.error('確認取り消しエラー:', err);
+    showToast('取り消しに失敗しました。もう一度お試しください');
   }
 }
 
@@ -2305,6 +2370,38 @@ async function protectReport(id){
   } catch(err){
     console.error('保護処理エラー:', err);
     showToast('保護処理に失敗しました。もう一度お試しください');
+  }
+}
+
+/**
+ * 誤って「回収する（保護）」してしまった投稿を、元の状態に戻す。
+ * 回収（保護）した本人のみ取り消し可能。取り消すと再び地図・一覧に表示される。
+ */
+async function unprotectReport(id){
+  if (!currentUser){ showToast('ログインすると取り消しができます'); return; }
+  const target = allReports.find(r => r.id === id);
+  if (target && target.d.protectedBy && target.d.protectedBy !== currentUser.uid){
+    showToast('この投稿を回収した本人のみ取り消せます');
+    return;
+  }
+  const ok = confirm('回収（保護）を取り消して、この投稿を元に戻しますか？\n再び地図・一覧に表示されるようになります。');
+  if (!ok) return;
+  try {
+    await db.collection('reports').doc(id).update({
+      status: firebase.firestore.FieldValue.delete(),
+      protectedBy: firebase.firestore.FieldValue.delete(),
+      protectedByName: firebase.firestore.FieldValue.delete(),
+      protectedByAvatarType: firebase.firestore.FieldValue.delete(),
+      protectedByAvatarEmoji: firebase.firestore.FieldValue.delete(),
+      protectedByAvatarPhotoUrl: firebase.firestore.FieldValue.delete(),
+      protectedAt: firebase.firestore.FieldValue.delete()
+    });
+    closeDetailSheet();
+    showToast('回収（保護）を取り消しました。投稿を元に戻しました');
+    if (currentUser) loadMyStats(currentUser.uid);
+  } catch(err){
+    console.error('取り消しエラー:', err);
+    showToast('取り消しに失敗しました。もう一度お試しください');
   }
 }
 
