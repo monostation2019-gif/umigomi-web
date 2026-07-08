@@ -1,41 +1,87 @@
-// キャッシュ名は更新のたびに必ず変える運用を推奨（変え忘れてもfetch戦略により自動更新は機能します）
-const CACHE_NAME = 'poisute-map-v5';
+// ============================================================
+// キャッシュ名を「自動で」決める仕組み。
+//
+// これまでは CACHE_NAME の数字（v6, v7...）を人が手で書き換える
+// 必要があったが、それをなくす。
+//
+// index.html をサーバーから取得した時、サーバーは自動的に
+// 「このファイルは最後にいつ更新されたか（Last-Modified）」
+// という情報を付けて返してくる。これはアップロードのたびに
+// サーバー側が勝手に付け替えてくれる情報で、人が用意する必要はない。
+//
+// この値をそのままキャッシュ名の一部として使うことで、
+// 「index.htmlを新しくアップロードする」→「Last-Modifiedが自動的に変わる」
+// →「キャッシュ名も自動的に変わる」→「古いキャッシュは自動的に消える」
+// という流れが、一切の手作業なしで成立する。
+// ============================================================
+const CACHE_PREFIX = 'poisute-map';
 const APP_SHELL = [
   './index.html',
   './manifest.json'
 ];
 
+/**
+ * index.html を取得し、サーバーが自動で付与する更新情報（Last-Modified優先、
+ * なければETag）を読み取って、それを元にキャッシュ名を組み立てる。
+ * どちらの情報もサーバーから得られない場合のみ、install実行時刻を使う
+ * （その場合でも動作上の問題はなく、単に自動クリーンアップの精度が下がるだけ）。
+ */
+async function resolveCacheName(){
+  try {
+    const res = await fetch('./index.html', { cache: 'no-store' });
+    const tag = res.headers.get('last-modified') || res.headers.get('etag');
+    if (tag){
+      const safeTag = tag.replace(/[^a-zA-Z0-9]/g, '').slice(0, 40);
+      if (safeTag) return `${CACHE_PREFIX}-${safeTag}`;
+    }
+  } catch (err){
+    console.warn('[sw] バージョン自動判定に失敗、フォールバックを使用:', err);
+  }
+  return `${CACHE_PREFIX}-fallback-${Date.now()}`;
+}
+
+// installとfetchの両方で同じキャッシュ名を使い回すため、一度だけ計算して使い回す
+const cacheNamePromise = resolveCacheName();
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      // addAll は1件でも取得失敗すると install 全体が失敗し、
-      // 新しいSWが永遠にインストールされない（＝自動更新が完全に止まる）
-      // 原因になるため、1件ずつ個別に試して失敗しても他に影響しないようにする。
-      // ここでの事前キャッシュはオフライン時のフォールバック用に過ぎず、
-      // 通常時のページ表示はfetchハンドラのネットワーク優先取得が担うので、
-      // 多少キャッシュに失敗しても実害はない。
-      return Promise.all(
-        APP_SHELL.map((path) =>
-          cache.add(path).catch((err) => {
-            console.warn('[sw] 事前キャッシュ失敗（無視して続行）:', path, err);
-          })
-        )
-      );
-    })
+    cacheNamePromise.then((cacheName) =>
+      caches.open(cacheName).then((cache) => {
+        // addAll は1件でも取得失敗すると install 全体が失敗し、
+        // 新しいSWが永遠にインストールされない（＝自動更新が完全に止まる）
+        // 原因になるため、1件ずつ個別に試して失敗しても他に影響しないようにする。
+        // ここでの事前キャッシュはオフライン時のフォールバック用に過ぎず、
+        // 通常時のページ表示はfetchハンドラのネットワーク優先取得が担うので、
+        // 多少キャッシュに失敗しても実害はない。
+        return Promise.all(
+          APP_SHELL.map((path) =>
+            cache.add(path).catch((err) => {
+              console.warn('[sw] 事前キャッシュ失敗（無視して続行）:', path, err);
+            })
+          )
+        );
+      })
+    )
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((names) =>
-      Promise.all(names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n)))
+    cacheNamePromise.then((cacheName) =>
+      caches.keys().then((names) =>
+        Promise.all(
+          names
+            .filter((n) => n.startsWith(CACHE_PREFIX) && n !== cacheName)
+            .map((n) => caches.delete(n))
+        )
+      )
     )
   );
   self.clients.claim();
 });
 
-// index.html側の更新バナーから送られる SKIP_WAITING メッセージを受け取り、
+// index.html側から送られる SKIP_WAITING メッセージを受け取り、
 // 待機中のSWをすぐ有効化する。install時にskipWaiting()を呼んでいるため
 // 通常はreg.waitingが発生しないはずだが、念のための保険として実装しておく。
 self.addEventListener('message', (event) => {
@@ -62,10 +108,16 @@ self.addEventListener('fetch', (event) => {
       fetch(req, { cache: 'no-store' })
         .then((response) => {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+          cacheNamePromise.then((cacheName) =>
+            caches.open(cacheName).then((cache) => cache.put(req, clone))
+          );
           return response;
         })
-        .catch(() => caches.match(req).then((cached) => cached || caches.match('./index.html')))
+        .catch(() =>
+          cacheNamePromise
+            .then((cacheName) => caches.open(cacheName))
+            .then((cache) => cache.match(req).then((cached) => cached || cache.match('./index.html')))
+        )
     );
     return;
   }
