@@ -2118,6 +2118,17 @@ function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+/**
+ * 端末のローカル日付を「YYYY-MM-DD」文字列で取得する（現地確認の1日1回制限に使用）
+ */
+function todayDateStr(){
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 /* ---- ゴミ詳細ボトムシート ---- */
 let detailLocation = null;
 let detailCurrentId = null;
@@ -2183,8 +2194,7 @@ function openDetailSheet(d, id){
  */
 function refreshDetailDynamic(d, id){
   const confirmCountEl = document.getElementById('detailConfirmCount');
-  const confirmedByArr = Array.isArray(d.confirmedBy) ? d.confirmedBy : [];
-  const confirmCount = confirmedByArr.length || d.confirmCount || 0;
+  const confirmCount = d.confirmCount || 0;
   if (confirmCount > 0){
     confirmCountEl.textContent = `👀 現地確認：${confirmCount}回`;
     confirmCountEl.style.display = '';
@@ -2194,14 +2204,15 @@ function refreshDetailDynamic(d, id){
 
   const isOwner = !!(currentUser && d.reportedBy === currentUser.uid);
   const isProtected = d.status === 'protected';
-  const iConfirmed = !!(currentUser && confirmedByArr.includes(currentUser.uid));
+  const confirmedByDate = d.confirmedByDate || {};
+  const iConfirmedToday = !!(currentUser && confirmedByDate[currentUser.uid] === todayDateStr());
   const actionsWrap = document.getElementById('detailRedoWrap');
   let actionsHtml = '';
   if (isOwner && !isProtected){
     actionsHtml += `<button class="popup-redo-btn" onclick="redoReport('${id}')">↺ 削除してやり直す</button>`;
   }
   if (!isProtected && currentUser && !isOwner){
-    const confirmBtnHtml = iConfirmed
+    const confirmBtnHtml = iConfirmedToday
       ? `<button class="popup-undo-confirm-btn" onclick="unconfirmReport('${id}')">↺ 確認をやり直す</button>`
       : `<button class="popup-confirm-btn" onclick="confirmReport('${id}')">👀 現地で確認</button>`;
     actionsHtml += `<div class="detail-actions-row">
@@ -2280,8 +2291,10 @@ async function redoReport(id){
 /**
  * 現地でゴミがまだある事を確認した時に押すボタン。
  * ピンは削除・保護されず、確認回数（confirmCount）だけが加算される。
- * 保護（回収）とは独立した操作。誰が確認済みかをconfirmedByに記録し、
- * 間違って押した場合は本人だけがunconfirmReportでやり直せる。
+ * 保護（回収）とは独立した操作。1つのピンにつき、1人1日1回のみタップ可能。
+ * 日付が変われば再びタップでき、確認回数（累計）はリセットされない。
+ * 誰がいつ最後に確認したかをconfirmedByDateに記録し、
+ * 「間違って押した」場合は本日分に限りunconfirmReportでやり直せる。
  */
 async function confirmReport(id){
   if (!currentUser){ showToast('ログインすると現地確認ができます'); return; }
@@ -2291,19 +2304,21 @@ async function confirmReport(id){
     showToast('自分の投稿は確認できません');
     return;
   }
-  const confirmedByArr = Array.isArray(target.d.confirmedBy) ? target.d.confirmedBy : [];
-  if (confirmedByArr.includes(currentUser.uid)){
-    showToast('すでに現地確認済みです');
+  const confirmedByDate = target.d.confirmedByDate || {};
+  const today = todayDateStr();
+  if (confirmedByDate[currentUser.uid] === today){
+    showToast('本日はすでに確認済みです。明日また確認できます');
     return;
   }
   try {
-    await db.collection('reports').doc(id).update({
-      confirmCount: firebase.firestore.FieldValue.increment(1),
-      confirmedBy: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
-    });
+    const updateObj = {
+      confirmCount: firebase.firestore.FieldValue.increment(1)
+    };
+    updateObj[`confirmedByDate.${currentUser.uid}`] = today;
+    await db.collection('reports').doc(id).update(updateObj);
     // サーバー往復を待たずに画面上をその場で更新
     target.d.confirmCount = (target.d.confirmCount || 0) + 1;
-    target.d.confirmedBy = [...confirmedByArr, currentUser.uid];
+    target.d.confirmedByDate = { ...confirmedByDate, [currentUser.uid]: today };
     if (detailCurrentId === id) refreshDetailDynamic(target.d, id);
     showToast('確認ありがとうございます！');
   } catch(err){
@@ -2313,25 +2328,30 @@ async function confirmReport(id){
 }
 
 /**
- * 間違って「現地で確認」を押してしまった場合に、その確認を取り消す（やり直す）。
- * 自分が確認済みの場合のみ取り消せる。ピンや保護状態には影響しない。
+ * 間違って「現地で確認」を押してしまった場合に、本日分の確認を取り消す（やり直す）。
+ * 本日自分が確認済みの場合のみ取り消せる。取り消すと本日分がリセットされ、
+ * 同じ日にもう一度「現地で確認」を押せるようになる。ピンや保護状態には影響しない。
  */
 async function unconfirmReport(id){
   if (!currentUser){ showToast('ログインすると取り消しができます'); return; }
   const target = allReports.find(r => r.id === id);
   if (!target) return;
-  const confirmedByArr = Array.isArray(target.d.confirmedBy) ? target.d.confirmedBy : [];
-  if (!confirmedByArr.includes(currentUser.uid)){
-    showToast('確認記録が見つかりませんでした');
+  const confirmedByDate = target.d.confirmedByDate || {};
+  const today = todayDateStr();
+  if (confirmedByDate[currentUser.uid] !== today){
+    showToast('本日の確認記録が見つかりませんでした');
     return;
   }
   try {
-    await db.collection('reports').doc(id).update({
-      confirmCount: firebase.firestore.FieldValue.increment(-1),
-      confirmedBy: firebase.firestore.FieldValue.arrayRemove(currentUser.uid)
-    });
+    const updateObj = {
+      confirmCount: firebase.firestore.FieldValue.increment(-1)
+    };
+    updateObj[`confirmedByDate.${currentUser.uid}`] = firebase.firestore.FieldValue.delete();
+    await db.collection('reports').doc(id).update(updateObj);
     target.d.confirmCount = Math.max(0, (target.d.confirmCount || 1) - 1);
-    target.d.confirmedBy = confirmedByArr.filter(uid => uid !== currentUser.uid);
+    const updatedDate = { ...confirmedByDate };
+    delete updatedDate[currentUser.uid];
+    target.d.confirmedByDate = updatedDate;
     if (detailCurrentId === id) refreshDetailDynamic(target.d, id);
     showToast('現地確認をやり直しました');
   } catch(err){
