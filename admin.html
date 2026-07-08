@@ -127,6 +127,8 @@ input,textarea,select{font-family:inherit;}
 }
 .btn-cancel{background:var(--bg); color:var(--muted); border:1px solid var(--line) !important;}
 .btn-submit{background:var(--teal); color:#fff;}
+.btn-delete{background:#FDE7E4; color:var(--red);}
+.btn-delete.hidden{display:none;}
 .form-photo-preview{width:80px; height:80px; border-radius:10px; object-fit:cover; margin-top:6px; display:none;}
 
 /* ---------- 一覧パネル ---------- */
@@ -246,6 +248,7 @@ input,textarea,select{font-family:inherit;}
       </div>
       <div class="form-actions">
         <button class="btn-cancel" onclick="closeFormPanel()">キャンセル</button>
+        <button class="btn-delete hidden" id="gomiDeleteBtn" onclick="deleteGomiFromForm()">削除</button>
         <button class="btn-submit" id="gomiSubmitBtn" onclick="submitGomi()">登録する</button>
       </div>
     </div>
@@ -272,6 +275,7 @@ input,textarea,select{font-family:inherit;}
       </div>
       <div class="form-actions">
         <button class="btn-cancel" onclick="closeFormPanel()">キャンセル</button>
+        <button class="btn-delete hidden" id="stampDeleteBtn" onclick="deleteStampFromForm()">削除</button>
         <button class="btn-submit" id="stampSubmitBtn" onclick="submitStamp()">登録する</button>
       </div>
     </div>
@@ -484,6 +488,8 @@ function closeFormPanel(){
   editingStampExistingPhoto = null;
   document.getElementById('gomiSubmitBtn').textContent = '登録する';
   document.getElementById('stampSubmitBtn').textContent = '登録する';
+  document.getElementById('gomiDeleteBtn').classList.add('hidden');
+  document.getElementById('stampDeleteBtn').classList.add('hidden');
 }
 
 function openListPanel(){
@@ -825,6 +831,7 @@ function editGomi(id){
   document.getElementById('formPanelStamp').classList.add('hidden');
   document.getElementById('formPanelGomi').classList.remove('hidden');
   document.getElementById('gomiSubmitBtn').textContent = '更新する';
+  document.getElementById('gomiDeleteBtn').classList.remove('hidden');
 }
 
 /* スタンプ地点の編集 */
@@ -855,6 +862,7 @@ function editStamp(id){
   document.getElementById('formPanelGomi').classList.add('hidden');
   document.getElementById('formPanelStamp').classList.remove('hidden');
   document.getElementById('stampSubmitBtn').textContent = '更新する';
+  document.getElementById('stampDeleteBtn').classList.remove('hidden');
 }
 
 async function deleteGomi(id){
@@ -866,6 +874,30 @@ async function deleteStamp(id){
   if (!confirm('このスタンプ地点を削除しますか？')) return;
   try { await db.collection('stampSpots').doc(id).delete(); showToast('削除しました'); }
   catch(err) { showToast('削除に失敗しました'); }
+}
+
+/* 地図上のピンをタップして開いた編集フォームからの削除（キャンセル・更新するボタンの並び） */
+async function deleteGomiFromForm(){
+  if (!editingGomiId) return;
+  if (!confirm('この投稿を削除しますか？')) return;
+  try {
+    await db.collection('reports').doc(editingGomiId).delete();
+    showToast('削除しました');
+    closeFormPanel();
+  } catch(err){
+    showToast('削除に失敗しました');
+  }
+}
+async function deleteStampFromForm(){
+  if (!editingStampId) return;
+  if (!confirm('このスタンプ地点を削除しますか？')) return;
+  try {
+    await db.collection('stampSpots').doc(editingStampId).delete();
+    showToast('削除しました');
+    closeFormPanel();
+  } catch(err){
+    showToast('削除に失敗しました');
+  }
 }
 
 function showToast(msg){
