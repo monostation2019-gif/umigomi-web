@@ -6,7 +6,7 @@
 <title>まちみっけ</title>
 <meta name="theme-color" content="#2F6FED">
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
@@ -243,15 +243,15 @@ nav.bottom button.active{color:var(--blue); font-weight:700;}
 
 /* ---------- 上に戻るボタン ---------- */
 .scroll-top-btn{
-  position:fixed; right:16px; bottom:calc(84px + var(--safe-bottom)); z-index:35;
-  width:46px; height:46px; border-radius:50%; border:none;
-  background:var(--ink); color:#fff; font-size:18px;
-  box-shadow:0 4px 14px rgba(20,30,60,0.35);
+  position:absolute; right:16px; bottom:20px; z-index:25;
+  width:44px; height:44px; border-radius:50%; border:none;
+  background:var(--card); color:var(--blue); font-size:19px;
+  box-shadow:0 6px 16px rgba(20,30,60,0.22);
   display:flex; align-items:center; justify-content:center;
-  opacity:0; transform:translateY(10px); pointer-events:none;
+  opacity:0; transform:translateY(10px) scale(0.9); pointer-events:none;
   transition:opacity .2s ease, transform .2s ease;
 }
-.scroll-top-btn.show{opacity:1; transform:translateY(0); pointer-events:auto;}
+.scroll-top-btn.show{opacity:1; transform:translateY(0) scale(1); pointer-events:auto;}
 .scroll-top-btn:active{transform:scale(0.92);}
 .view.hidden{display:none;}
 .view-header{padding:16px 18px 4px;}
@@ -649,7 +649,7 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 
 <header>
   <div class="brand">
-    <img class="leaf" src="./img/logo.png" alt="親方アイコン">
+    <img class="leaf" src="/img/logo.png" alt="親方アイコン">
     <div class="brand-text">
       <span class="name">まちみっけ</span>
       <span class="sub">みんなでつくる、きれいな未来MAP</span>
@@ -740,7 +740,7 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
     <div class="stamp-book-grid" id="stampBookGrid"></div>
   </div>
 
-  <button type="button" class="scroll-top-btn" id="mypageScrollTopBtn" onclick="scrollViewToTop('view-mypage')" title="上に戻る">▲</button>
+  <button type="button" class="scroll-top-btn" id="mypageScrollTopBtn" onclick="scrollViewToTop('view-mypage')" title="上に戻る">↑</button>
 </div>
 
 <!-- ランキング ビュー -->
@@ -757,7 +757,7 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
     <button type="button" class="ranking-more-btn" id="rankingMoreBtn" onclick="expandRanking()" style="display:none;">もっと見る</button>
   </div>
 
-  <button type="button" class="scroll-top-btn" id="rankingScrollTopBtn" onclick="scrollViewToTop('view-ranking')" title="上に戻る">▲</button>
+  <button type="button" class="scroll-top-btn" id="rankingScrollTopBtn" onclick="scrollViewToTop('view-ranking')" title="上に戻る">↑</button>
 </div>
 
 <!-- タイムライン ビュー -->
@@ -1532,7 +1532,7 @@ async function saveProfile(){
      置き換える場合も、同じフィールド名（lat/lng/radius/title/historyText/photo）
      にしておけば差し替えが容易。
 ========================================================= */
-const STAMP_ICON_DATA_URL = './img/stamp-icon.png';
+const STAMP_ICON_DATA_URL = '/img/stamp-icon.png';
 
 // スタンプ地点はFirestoreの'stampSpots'コレクションから読み込む
 // （admin.htmlで管理者がピン登録すると、ここにリアルタイムで反映される）
@@ -1730,13 +1730,13 @@ async function showBackgroundStampNotification(spot, distanceMeters){
       const reg = await navigator.serviceWorker.ready;
       reg.showNotification(title, {
         body,
-        icon: 'icon-192.png',
-        badge: 'icon-192.png',
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
         tag: `stamp-${spot.id}`,
         vibrate: [120, 60, 120]
       });
     } else {
-      new Notification(title, { body, icon: 'icon-192.png' });
+      new Notification(title, { body, icon: '/icon-192.png' });
     }
   } catch (err){
     console.warn('バックグラウンド通知の表示に失敗:', err);
@@ -3115,11 +3115,11 @@ function closeSheet(){ document.getElementById('sheetBackdrop').classList.remove
    投稿完了スタンプ演出（親方スタンプをランダム表示 → ピコン音 → フェードアウト）
 ========================================================= */
 const STAMP_FILES = [
-  './img/stamp1.webp',
-  './img/stamp2.webp',
-  './img/stamp3.webp',
-  './img/stamp4.webp',
-  './img/stamp5.webp',
+  '/img/stamp1.webp',
+  '/img/stamp2.webp',
+  '/img/stamp3.webp',
+  '/img/stamp4.webp',
+  '/img/stamp5.webp',
 ];
 
 // Web Audio APIで「ピコン」という通知音を合成する（音声ファイル不要）
