@@ -536,6 +536,7 @@ function initAdminMap(){
 
   watchGomiReports();
   watchStampSpots();
+  watchNotifications();
 }
 
 function goToMyLocationAdmin(showFeedback){
@@ -1042,19 +1043,25 @@ function showToast(msg){
    お知らせ配信機能
    ・notificationsコレクションに配信すると、index.html側の
      ベルアイコンに赤い点がつき、ユーザーがタップすると読める。
+   ・reports/stampSpotsと同じく、ログイン（匿名サインイン）完了後の
+     initAdminMap()内から呼び出す。ログイン前に監視を始めると、
+     Firestoreのルール（認証必須）に弾かれて延々とエラー再試行が
+     走り続け、画面全体の反応が鈍くなる原因になっていた。
 ========================================================= */
 let allNotifications = [];
 
-db.collection('notifications').orderBy('createdAt', 'desc').limit(50).onSnapshot(snap => {
-  allNotifications = snap.docs.map(doc => {
-    const d = doc.data();
-    const ms = (d.createdAt && d.createdAt.toMillis) ? d.createdAt.toMillis() : 0;
-    return { id: doc.id, title: d.title || '', body: d.body || '', ms };
+function watchNotifications(){
+  db.collection('notifications').orderBy('createdAt', 'desc').limit(50).onSnapshot(snap => {
+    allNotifications = snap.docs.map(doc => {
+      const d = doc.data();
+      const ms = (d.createdAt && d.createdAt.toMillis) ? d.createdAt.toMillis() : 0;
+      return { id: doc.id, title: d.title || '', body: d.body || '', ms };
+    });
+    renderNotifAdminList();
+  }, err => {
+    console.warn('お知らせの取得に失敗:', err);
   });
-  renderNotifAdminList();
-}, err => {
-  console.warn('お知らせの取得に失敗:', err);
-});
+}
 
 function renderNotifAdminList(){
   const wrap = document.getElementById('notifListAdmin');
