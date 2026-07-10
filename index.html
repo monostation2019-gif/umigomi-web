@@ -67,6 +67,23 @@ body.theme-yellow{--bg:#FDF3D0; --line:#F0DFA0;}
 body.theme-blue{--bg:#DCE8FB; --line:#C4D8F5;}
 h1,h2,h3,.brand{font-family:"Zen Kaku Gothic New", sans-serif;}
 
+/* ---------- 起動スプラッシュ ---------- */
+#appSplash{
+  position:fixed; inset:0; z-index:9999;
+  background:linear-gradient(135deg, var(--blue), var(--blue-dark));
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+  opacity:1; transition:opacity .35s ease;
+}
+#appSplash.hide{opacity:0; pointer-events:none;}
+.appSplash-logo{width:64px; height:64px; border-radius:16px; box-shadow:0 8px 22px rgba(0,0,0,0.25);}
+.appSplash-title{margin:0; color:#fff; font-weight:900; font-size:18px; font-family:"Zen Kaku Gothic New", sans-serif; letter-spacing:.04em;}
+.appSplash-spinner{
+  width:28px; height:28px; border-radius:50%;
+  border:3px solid rgba(255,255,255,0.35); border-top-color:#fff;
+  animation:appSplashSpin .8s linear infinite;
+}
+@keyframes appSplashSpin{ to{ transform:rotate(360deg); } }
+
 /* ---------- Header ---------- */
 header{
   position:relative; z-index:20;
@@ -565,7 +582,7 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
   margin:10px 16px 20px; padding:16px 14px 18px;
   box-shadow:0 10px 26px rgba(20,30,60,0.08);
 }
-/* ---------- タイムライン：ゴミ種類（カテゴリ）フィルターチップ ---------- */
+/* ---------- タイムライン：ゴミの種類フィルターチップ（全18種類・横スクロール） ---------- */
 .tl-cat-bar{
   display:flex; gap:8px; overflow-x:auto; scrollbar-width:none;
   padding:2px 2px 12px; margin-bottom:2px;
@@ -574,25 +591,13 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 .tl-cat-bar::-webkit-scrollbar{display:none;}
 .tl-cat-chip{
   flex:none; scroll-snap-align:start; border:1.5px solid var(--line); background:#fff;
-  border-radius:999px; padding:10px 18px; font-size:13.5px; font-weight:800;
+  border-radius:999px; padding:10px 16px; font-size:13px; font-weight:800;
   color:var(--ink); font-family:"Noto Sans JP", sans-serif; white-space:nowrap;
+  display:inline-flex; align-items:center; gap:5px;
 }
+.tl-cat-chip .fe{font-size:14px;}
 .tl-cat-chip:active{transform:scale(0.96);}
 .tl-cat-chip.active{border-color:var(--blue); color:var(--blue); background:#EAF1FF;}
-.month-nav-v2{display:flex; align-items:center; gap:10px; margin-bottom:14px;}
-.month-nav-btn-v2{
-  flex:none; width:42px; height:42px; border-radius:50%; border:none;
-  background:#fff; color:var(--blue); font-size:19px; font-weight:900;
-  box-shadow:0 3px 10px rgba(20,30,60,0.14);
-  display:flex; align-items:center; justify-content:center;
-}
-.month-nav-btn-v2:disabled{color:var(--line); box-shadow:none; opacity:.5;}
-.month-nav-btn-v2:active{transform:scale(0.92);}
-.month-pill{
-  flex:1; text-align:center; background:#F3F7FF; border:1.5px solid #DCE7FB;
-  border-radius:999px; padding:11px 12px; font-weight:900; font-size:16px;
-  color:var(--ink); font-family:"Zen Kaku Gothic New", sans-serif;
-}
 .timeline-map-wrap{
   height:440px; border-radius:20px; overflow:hidden; margin-bottom:10px; border:1px solid var(--line);
 }
@@ -600,28 +605,20 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 .timeline-empty-note{
   font-size:12px; color:var(--muted); text-align:center; padding:8px 0 2px;
 }
-/* ---------- タイムライン：ゴミ種類別の内訳（スタンプラリーは含まない） ---------- */
-.timeline-type-breakdown{margin:6px 2px 4px;}
-.ttb-group{margin-bottom:12px;}
-.ttb-group:last-child{margin-bottom:0;}
-.ttb-group-label{
-  font-size:11.5px; font-weight:800; color:var(--muted); margin:0 0 7px 2px;
-  font-family:"Noto Sans JP", sans-serif;
+/* ---------- タイムライン：年の選択（地図下・横スクロール） ---------- */
+.tl-year-bar{
+  display:flex; gap:8px; overflow-x:auto; scrollbar-width:none;
+  padding:2px 2px 4px; margin-top:2px;
+  -webkit-overflow-scrolling:touch; scroll-snap-type:x proximity;
 }
-.ttb-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(84px,1fr)); gap:8px;}
-.ttb-item{
-  display:flex; flex-direction:column; align-items:center; gap:3px;
-  background:#F3F7FF; border:1px solid #DCE7FB; border-radius:14px;
-  padding:9px 6px 8px;
+.tl-year-bar::-webkit-scrollbar{display:none;}
+.tl-year-chip{
+  flex:none; scroll-snap-align:center; border:1.5px solid var(--line); background:#fff;
+  border-radius:999px; padding:7px 16px; font-size:13px; font-weight:800;
+  color:var(--muted); font-family:"Zen Kaku Gothic New", sans-serif; white-space:nowrap;
 }
-.ttb-item .em{font-size:19px; line-height:1;}
-.ttb-item .lb{font-size:10px; color:var(--muted); text-align:center; line-height:1.3;}
-.ttb-item .ct{font-size:13.5px; font-weight:900; color:var(--ink);}
-.ttb-empty{font-size:12px; color:var(--muted); text-align:center; padding:6px 0;}
-.timeline-year-label{
-  text-align:center; font-size:13px; font-weight:800; color:var(--muted);
-  margin:2px 0 0; font-family:"Zen Kaku Gothic New", sans-serif;
-}
+.tl-year-chip:active{transform:scale(0.96);}
+.tl-year-chip.active{border-color:var(--blue); color:var(--blue); background:#EAF1FF;}
 .timeline-slider-outer{
   overflow-x:auto; scrollbar-width:none; margin:6px 0 2px;
   -webkit-overflow-scrolling:touch; scroll-snap-type:x proximity;
@@ -643,6 +640,8 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 }
 .slider-month .lbl{font-size:12.5px; font-weight:700; color:var(--muted);}
 .slider-month .tick{width:7px; height:7px; border-radius:50%; background:var(--line); border:2px solid var(--card);}
+.slider-month.disabled{opacity:.35;}
+.slider-month.disabled .lbl{color:var(--line);}
 .slider-month .pill{display:none;}
 .slider-month.active{transform:translateY(-5px);}
 .slider-month.active .lbl,
@@ -721,6 +720,23 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 </style>
 </head>
 <body>
+
+<!-- =========================================================
+     起動時スプラッシュ（読み込み中オーバーレイ）
+     ・以前は、Firebase/地図の初期化や認証確認が終わるまでの間、
+       未完成のレイアウトやプロフィールの仮表示がそのまま画面に出ており、
+       それが「読み込みに時間がかかる」「タイムラグ・バグっぽい」という
+       印象の一因になっていた。
+     ・起動直後はこの全画面オーバーレイだけを見せておき、初回の認証確認＋
+       地図の初期表示が整った時点（hideSplash()）で一度だけフェードアウトする。
+       通信が遅い環境で万一止まっても画面が固まって見えないよう、
+       保険として一定時間で強制的に消すフォールバックも用意する。
+========================================================= -->
+<div id="appSplash">
+  <img class="appSplash-logo" src="img/logo.png" alt="まちみっけ">
+  <p class="appSplash-title">まちみっけ</p>
+  <div class="appSplash-spinner"></div>
+</div>
 
 <header>
   <div class="brand">
@@ -840,24 +856,14 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
   <div class="view-header"><h2>タイムライン</h2><p>月ごとの変化をスライダーで確認</p></div>
 
   <div class="timeline-frame">
-    <div class="tl-cat-bar" id="timelineCatBar">
-      <button type="button" class="tl-cat-chip active" data-cat="all" onclick="setTimelineCategory('all', this)">すべて</button>
-      <button type="button" class="tl-cat-chip" data-cat="ポイ捨て" onclick="setTimelineCategory('ポイ捨て', this)">ポイ捨て</button>
-      <button type="button" class="tl-cat-chip" data-cat="海ごみ" onclick="setTimelineCategory('海ごみ', this)">海ごみ</button>
-      <button type="button" class="tl-cat-chip" data-cat="その他" onclick="setTimelineCategory('その他', this)">その他</button>
-    </div>
-
-    <div class="month-nav-v2">
-      <button type="button" class="month-nav-btn-v2" id="timelinePrevBtn" onclick="shiftTimelineMonth(-1)">‹</button>
-      <div class="month-pill" id="timelineMonthLabel">2026年7月</div>
-      <button type="button" class="month-nav-btn-v2" id="timelineNextBtn" onclick="shiftTimelineMonth(1)">›</button>
-    </div>
+    <!-- ゴミの種類フィルター：「すべて」+ 全17品目=18種類を横スクロールで選べる（中身はJSでITEM_TYPESから自動生成） -->
+    <div class="tl-cat-bar" id="timelineCatBar"></div>
 
     <div class="timeline-map-wrap"><div id="timelineMap"></div></div>
     <p class="timeline-empty-note" id="timelineEmptyNote" style="display:none;">この月の投稿はまだありません</p>
-    <div class="timeline-type-breakdown" id="timelineTypeBreakdown"></div>
 
-    <p class="timeline-year-label" id="timelineYearLabel">2026年</p>
+    <!-- 年月の選択：地図の下に移動。まず年を横スクロールで選び、その下で月をスクロールして選ぶ -->
+    <div class="tl-year-bar" id="timelineYearBar"></div>
     <div class="timeline-slider-outer"><div class="timeline-slider" id="timelineDots"></div></div>
 
     <button type="button" class="timeline-compare-btn" onclick="openCompareSheet()">変化を比較</button>
@@ -1217,6 +1223,53 @@ function closeNotifSheet(){
 
 let currentUser = null;
 let activeFilter = 'all'; // ゴミ種類フィルター（'all' / 各itemType / 'stamp'）。スタンプ地点の表示判定でも使うため早めに宣言。
+
+/* =========================================================
+   プロフィールのローカルキャッシュ
+   ・以前は起動のたびに「まず仮の初期表示 → Firestoreの応答が届いてから
+     本来のニックネーム/アイコンに差し替え」という流れだったため、
+     通信が遅い環境ほど「一瞬だけ変更前（またはゲスト名）の状態が見える」
+     →「時間差で正しい状態になる」という、ちらつき・タイムラグが目立っていた。
+   ・保存に成功した最新のプロフィールを端末に控えておき、次回起動時は
+     Firestoreの応答を待たずにまずそれを表示することで、この「戻って見える」
+     現象をなくす（裏側では引き続きFirestoreから最新値を取得して差し替える）。
+========================================================= */
+const PROFILE_CACHE_KEY = 'mm_profile_cache_v1';
+function getCachedProfile(uid){
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    return (obj && obj.uid === uid) ? obj : null;
+  } catch(err){
+    return null;
+  }
+}
+function setCachedProfile(uid, data){
+  try {
+    localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({ uid, ...data }));
+  } catch(err){
+    // 端末のストレージ容量不足などで保存できなくても、致命的ではないので無視する
+    console.warn('プロフィールキャッシュの保存に失敗:', err);
+  }
+}
+
+/**
+ * 起動スプラッシュを消す。初回の認証確認が終わった時点で一度だけ呼ばれる。
+ * ・万一Firebaseの応答が極端に遅い/失敗した場合でも画面が固まって見えないよう、
+ *   保険として一定時間（6秒）経過したら強制的に消すフォールバックも仕込んでおく。
+ */
+let splashHidden = false;
+function hideSplash(){
+  if (splashHidden) return;
+  splashHidden = true;
+  const el = document.getElementById('appSplash');
+  if (!el) return;
+  el.classList.add('hide');
+  setTimeout(() => el.remove(), 400);
+}
+setTimeout(hideSplash, 6000);
+
 auth.onAuthStateChanged(user => {
   if (user) {
     currentUser = user;
@@ -1224,6 +1277,7 @@ auth.onAuthStateChanged(user => {
     loadUserProfile(user.uid);
     loadMyStats(user.uid);
     loadCollectedStamps(user.uid);
+    hideSplash();
   } else {
     // 未ログインの場合はログイン画面（login.html）へ
     window.location.href = 'login.html';
@@ -1232,8 +1286,24 @@ auth.onAuthStateChanged(user => {
 
 function renderProfile(user){
   const isAnon = user.isAnonymous;
-  document.getElementById('profileName').textContent = isAnon ? "ゲストユーザー" : (user.displayName || "親方ファン");
   document.getElementById('profileSub').textContent = isAnon ? "ログインすると記録が消えません" : "ログイン済み";
+
+  // 前回このuidで取得・保存済みのプロフィールがあれば、Firestoreの応答を待たずに
+  // まずそれを表示する（loadUserProfile()が完了次第、最新値に差し替わる）
+  const cached = getCachedProfile(user.uid);
+  if (cached && cached.nickname){
+    profileNickname = cached.nickname;
+    selectedAvatar = cached.avatar || (isAnon ? "👤" : "🧑");
+    existingAvatarType = cached.avatarType || 'emoji';
+    existingAvatarPhotoUrl = cached.avatarPhotoUrl || null;
+    profileBio = cached.bio || null;
+    document.getElementById('profileName').textContent = cached.nickname;
+    updateProfileBioDisplay();
+    setAvatarDisplay('avatarInitial', existingAvatarType, selectedAvatar, existingAvatarPhotoUrl);
+    return;
+  }
+
+  document.getElementById('profileName').textContent = isAnon ? "ゲストユーザー" : (user.displayName || "親方ファン");
   selectedAvatar = isAnon ? "👤" : "🧑";
   existingAvatarType = 'emoji';
   existingAvatarPhotoUrl = null;
@@ -1256,6 +1326,14 @@ function loadUserProfile(uid){
       profileBio = d.bio || null;
       updateProfileBioDisplay();
       setAvatarDisplay('avatarInitial', existingAvatarType, selectedAvatar, existingAvatarPhotoUrl);
+      // 次回起動時にすぐ正しい内容を出せるよう、取得できた最新値を控えておく
+      setCachedProfile(uid, {
+        nickname: d.nickname || null,
+        avatar: selectedAvatar,
+        avatarType: existingAvatarType,
+        avatarPhotoUrl: existingAvatarPhotoUrl,
+        bio: profileBio
+      });
     }
   }).catch(err => console.error('プロフィール取得エラー:', err));
 }
@@ -1682,6 +1760,16 @@ async function saveProfile(){
     existingAvatarPhotoUrl = finalAvatarType === 'photo' ? finalAvatarPhotoUrl : null;
     document.getElementById('profileName').textContent = raw;
     setAvatarDisplay('avatarInitial', finalAvatarType, finalAvatarEmoji, finalAvatarPhotoUrl);
+    // 保存した内容を即キャッシュしておく。次回起動時にFirestoreの応答を待たず
+    // 「変更後」の状態からすぐ表示できるようにするため（起動直後に古い内容へ
+    // 一瞬戻って見える不具合の対策）。
+    setCachedProfile(currentUser.uid, {
+      nickname: raw,
+      avatar: finalAvatarEmoji,
+      avatarType: finalAvatarType,
+      avatarPhotoUrl: finalAvatarType === 'photo' ? finalAvatarPhotoUrl : null,
+      bio: bioRaw
+    });
     closeProfileSheet();
     showToast('プロフィールを更新しました');
   } catch (err) {
@@ -2883,36 +2971,56 @@ let timelineHeatLayer = null;
 let timelineInitialized = false;
 let cachedTimelineMonths = null; // [monthKey, ...]（古い→新しい順）。初回だけFirestoreに最初の投稿の月を問い合わせて作る
 let timelineRenderToken = 0;     // 月の連打対策：古い結果が後から表示されてしまうのを防ぐ
-let timelineCategory = 'all';    // タイムラインのカテゴリフィルター（'all' / 'ポイ捨て' / '海ごみ' / 'その他'）
-let timelineMonthReportsRaw = []; // 選択中の月の全投稿（カテゴリ未フィルター）。チップ切り替え時にFirestoreへ再問い合わせしないためのキャッシュ
+let timelineItemType = 'all';    // タイムラインのゴミ種類フィルター（'all' または ITEM_TYPESのlabelそのもの）
+let timelineMonthReportsRaw = []; // 選択中の月の全投稿（種類未フィルター）。チップ切り替え時にFirestoreへ再問い合わせしないためのキャッシュ
 const timelineMonthReportsCache = new Map(); // 月key -> 投稿配列。過去月を行き来しても毎回Firestoreへ問い合わせない
-let timelineDotsMonths = null; // 直近にドット一覧を描画した月keyの配列（変化がなければDOMを作り直さない）
+let timelineDotsYear = null;     // 直近に月ドットを描画した「年」。変わらなければDOMを作り直さない
+let timelineYearBarBuilt = false; // 年の横スクロールバーを一度作ったら、投稿があるたびに作り直さない
 
-/**
- * 投稿1件が属するタイムライン用カテゴリを判定する。
- * 「その他」は品目一覧上はポイ捨てカテゴリ内の1項目だが、タイムラインの
- * フィルターチップ上では独立した区分として扱う（画面デザインに合わせるため）。
- */
-function timelineCategoryOf(d){
-  if (d.itemType === 'その他') return 'その他';
-  const def = findItemType(d.itemType);
-  return (def && def.cat) || 'ポイ捨て';
-}
-function reportMatchesTimelineCategory(d, cat){
-  return cat === 'all' || timelineCategoryOf(d) === cat;
+function reportMatchesTimelineType(d, type){
+  return type === 'all' || d.itemType === type;
 }
 
 /**
- * カテゴリチップ切り替え。
+ * ゴミの種類チップ切り替え（「すべて」+ 全17品目=18種類）。
  * ・すでに取得済みの月データ（timelineMonthReportsRaw）を再利用してその場で
  *   絞り込むだけなので、Firestoreへの再問い合わせは発生しない（即座に反応する）。
  */
-function setTimelineCategory(cat, btnEl){
-  if (timelineCategory === cat) return;
-  timelineCategory = cat;
+function setTimelineItemType(type, btnEl){
+  if (timelineItemType === type) return;
+  timelineItemType = type;
   document.querySelectorAll('#timelineCatBar .tl-cat-chip').forEach(c => c.classList.remove('active'));
   if (btnEl) btnEl.classList.add('active');
   renderTimelineHeatAndBreakdown();
+}
+
+/**
+ * ゴミの種類フィルターバーをITEM_TYPESから自動生成する。
+ * 「すべて」+ ITEM_TYPESの全品目（現在17種類）＝ 合計18種類を横スクロールで並べる。
+ * 品目リストが変わっても、ここを直す必要がないようにするため。
+ */
+function renderTimelineTypeBar(){
+  const bar = document.getElementById('timelineCatBar');
+  if (!bar || bar.dataset.built === '1') return;
+  bar.dataset.built = '1';
+
+  const allChip = document.createElement('button');
+  allChip.type = 'button';
+  allChip.className = 'tl-cat-chip active';
+  allChip.dataset.type = 'all';
+  allChip.textContent = 'すべて';
+  allChip.onclick = () => setTimelineItemType('all', allChip);
+  bar.appendChild(allChip);
+
+  ITEM_TYPES.forEach(it => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tl-cat-chip';
+    btn.dataset.type = it.label;
+    btn.innerHTML = `<span class="fe">${it.emoji}</span>${escapeHtml(it.label)}`;
+    btn.onclick = () => setTimelineItemType(it.label, btn);
+    bar.appendChild(btn);
+  });
 }
 
 function firstOfMonth(date){
@@ -3005,9 +3113,8 @@ function ensureTimelineMap(){
 
 async function renderTimeline(){
   ensureTimelineMap();
+  renderTimelineTypeBar(); // 「すべて」+ 全18種類のチップは初回だけ生成する
   const myToken = ++timelineRenderToken;
-
-  document.getElementById('timelineMonthLabel').textContent = monthLabelOf(timelineMonthDate);
 
   const emptyNote = document.getElementById('timelineEmptyNote');
   emptyNote.textContent = '読み込み中…';
@@ -3019,20 +3126,20 @@ async function renderTimeline(){
   timelineMonthReportsRaw = monthReports;
   renderTimelineHeatAndBreakdown();
 
+  renderTimelineYearBar();
   renderTimelineDots();
-  updateTimelineNavButtons();
 
   requestAnimationFrame(() => { if (timelineMap) timelineMap.invalidateSize(); });
 }
 
 /**
  * 現在キャッシュ済みの月データ（timelineMonthReportsRaw）に、選択中の
- * カテゴリフィルターをかけてヒートマップと種類別内訳を再描画する。
- * ・Firestoreへは問い合わせない（カテゴリチップの切り替えを一瞬で反映するため）。
+ * ゴミの種類フィルターをかけてヒートマップを再描画する。
+ * ・Firestoreへは問い合わせない（チップの切り替えを一瞬で反映するため）。
  */
 function renderTimelineHeatAndBreakdown(){
   const emptyNote = document.getElementById('timelineEmptyNote');
-  const filtered = timelineMonthReportsRaw.filter(({ d }) => reportMatchesTimelineCategory(d, timelineCategory));
+  const filtered = timelineMonthReportsRaw.filter(({ d }) => reportMatchesTimelineType(d, timelineItemType));
   const heatPoints = filtered.filter(({ d }) => d.location).map(({ d }) => [d.location.latitude, d.location.longitude, 0.6]);
 
   if (timelineHeatLayer) timelineMap.removeLayer(timelineHeatLayer);
@@ -3047,104 +3154,85 @@ function renderTimelineHeatAndBreakdown(){
     emptyNote.style.display = '';
     timelineMap.setView(DEFAULT_CENTER, 13);
   }
-
-  renderTimelineTypeBreakdown(filtered);
 }
 
 /**
- * 選択中の月の投稿を「ゴミの種類別」に集計して表示する。
- * ※ スタンプラリー（STAMP_SPOTS）とは無関係で、通常の投稿（reports）だけを対象にする。
- * ※ renderTimeline()が既に取得済みのmonthReportsをそのまま再利用するため、
- * 　このために追加でFirestoreへ問い合わせることはしない。
+ * 年の横スクロールバー（地図のすぐ下）。
+ * ・投稿がある最初の年〜今年までを並べ、タップでその年に切り替える
+ *   （月は現在選んでいる月番号のまま、その年の同じ月に移動する）。
+ * ・年の一覧が変わらない限りDOMは作り直さない。
  */
-function renderTimelineTypeBreakdown(monthReports){
-  const wrap = document.getElementById('timelineTypeBreakdown');
+async function renderTimelineYearBar(){
+  const wrap = document.getElementById('timelineYearBar');
   if (!wrap) return;
+  const months = await getTimelineMonths();
+  const minYear = Math.floor(months[0] / 12);
+  const maxYear = Math.floor(months[months.length - 1] / 12);
+  const currentYear = timelineMonthDate.getFullYear();
 
-  const counts = countByType(monthReports); // Map<ラベル, 件数>
-  if (counts.size === 0){
-    wrap.innerHTML = '<p class="ttb-empty">この月の種類別内訳はまだありません</p>';
-    return;
+  if (!timelineYearBarBuilt){
+    wrap.innerHTML = '';
+    for (let y = minYear; y <= maxYear; y++){
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tl-year-chip';
+      btn.dataset.year = String(y);
+      btn.textContent = `${y}年`;
+      btn.onclick = () => selectTimelineYear(y);
+      wrap.appendChild(btn);
+    }
+    timelineYearBarBuilt = true;
   }
 
-  const groups = {};
-  counts.forEach((count, label) => {
-    const def = findItemType(label);
-    const cat = (def && def.cat) || 'ポイ捨て';
-    const emoji = (def && def.emoji) || '🗑️';
-    if (!groups[cat]) groups[cat] = [];
-    groups[cat].push({ label, emoji, count });
+  wrap.querySelectorAll('.tl-year-chip').forEach(btn => {
+    btn.classList.toggle('active', Number(btn.dataset.year) === currentYear);
   });
-
-  const catOrder = ['ポイ捨て', '海ごみ'];
-  Object.keys(groups).forEach(cat => { if (!catOrder.includes(cat)) catOrder.push(cat); });
-
-  wrap.innerHTML = catOrder.filter(cat => groups[cat] && groups[cat].length).map(cat => {
-    const items = groups[cat].slice().sort((a,b) => b.count - a.count);
-    const itemsHtml = items.map(it => `
-      <div class="ttb-item">
-        <span class="em">${it.emoji}</span>
-        <span class="lb">${escapeHtml(it.label)}</span>
-        <span class="ct">${it.count}件</span>
-      </div>`).join('');
-    return `<div class="ttb-group"><p class="ttb-group-label">${escapeHtml(cat)}</p><div class="ttb-grid">${itemsHtml}</div></div>`;
-  }).join('');
+  const activeChip = wrap.querySelector('.tl-year-chip.active');
+  if (activeChip) activeChip.scrollIntoView({ inline:'center', block:'nearest', behavior:'smooth' });
 }
 
+function selectTimelineYear(year){
+  if (year === timelineMonthDate.getFullYear()) return;
+  timelineMonthDate = new Date(year, timelineMonthDate.getMonth(), 1);
+  renderTimeline();
+}
+
+/**
+ * 月のスクロールドット（年バーのすぐ下）。選んでいる年の1月〜12月を並べ、
+ * データが存在しうる範囲外の月（未来の月・最初の投稿より前の月）は選べないようにする。
+ */
 async function renderTimelineDots(){
   const wrap = document.getElementById('timelineDots');
   const months = await getTimelineMonths();
+  const minKey = months[0];
+  const maxKey = months[months.length - 1];
+  const year = timelineMonthDate.getFullYear();
   const currentKey = monthKeyOf(timelineMonthDate);
 
-  // 月の一覧が前回と変わっていなければDOMは作り直さず、activeの付け替えだけ行う。
-  // （以前は月を切り替えるたびに全ドットを毎回作り直していたため、月数が増えるほど
-  //   スワイプ操作がもたついていた。これがタイムライン内の「動作が悪い」原因の一つ）
-  const sameMonths = timelineDotsMonths
-    && timelineDotsMonths.length === months.length
-    && timelineDotsMonths[timelineDotsMonths.length - 1] === months[months.length - 1];
-
-  if (!sameMonths){
+  // 選んでいる年が変わらなければDOMは作り直さず、activeの付け替えだけ行う。
+  if (timelineDotsYear !== year){
     wrap.innerHTML = '';
-    months.forEach(key => {
-      const y = Math.floor(key / 12), m = key % 12;
-      const date = new Date(y, m, 1);
+    for (let m = 0; m < 12; m++){
+      const key = year * 12 + m;
+      const disabled = key < minKey || key > maxKey;
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'slider-month';
+      btn.className = 'slider-month' + (disabled ? ' disabled' : '');
       btn.dataset.key = String(key);
+      btn.disabled = disabled;
       btn.innerHTML = `<span class="lbl">${m+1}月</span><span class="tick"></span><span class="pill">${m+1}月</span>`;
-      btn.onclick = () => { timelineMonthDate = date; renderTimeline(); };
+      if (!disabled) btn.onclick = () => { timelineMonthDate = new Date(year, m, 1); renderTimeline(); };
       wrap.appendChild(btn);
-    });
-    timelineDotsMonths = months.slice();
+    }
+    timelineDotsYear = year;
   }
 
   wrap.querySelectorAll('.slider-month').forEach(btn => {
     btn.classList.toggle('active', Number(btn.dataset.key) === currentKey);
   });
 
-  const yearLabel = document.getElementById('timelineYearLabel');
-  if (yearLabel) yearLabel.textContent = `${Math.floor(currentKey / 12)}年`;
-
   const activeDot = wrap.querySelector('.slider-month.active');
   if (activeDot) activeDot.scrollIntoView({ inline:'center', block:'nearest', behavior:'smooth' });
-}
-
-async function updateTimelineNavButtons(){
-  const months = await getTimelineMonths();
-  const idx = months.indexOf(monthKeyOf(timelineMonthDate));
-  document.getElementById('timelinePrevBtn').disabled = idx <= 0;
-  document.getElementById('timelineNextBtn').disabled = (idx === -1) || (idx >= months.length - 1);
-}
-
-async function shiftTimelineMonth(delta){
-  const months = await getTimelineMonths();
-  const idx = months.indexOf(monthKeyOf(timelineMonthDate));
-  const nextIdx = idx + delta;
-  if (nextIdx < 0 || nextIdx >= months.length) return;
-  const key = months[nextIdx];
-  timelineMonthDate = new Date(Math.floor(key / 12), key % 12, 1);
-  renderTimeline();
 }
 
 /* ---- タイムライン：先月と比較シート ---- */
