@@ -550,6 +550,12 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
   border-radius:999px; padding:11px 12px; font-weight:900; font-size:16px;
   color:var(--ink); font-family:"Zen Kaku Gothic New", sans-serif;
 }
+.timeline-filter-outer{
+  overflow-x:auto; white-space:nowrap; scrollbar-width:none;
+  -webkit-overflow-scrolling:touch; margin:0 0 12px; padding-bottom:2px;
+}
+.timeline-filter-outer::-webkit-scrollbar{display:none;}
+.timeline-filter-bar{display:inline-flex; gap:6px;}
 .timeline-map-wrap{
   height:320px; border-radius:20px; overflow:hidden; margin-bottom:10px; border:1px solid var(--line);
 }
@@ -770,6 +776,8 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
       <div class="month-pill" id="timelineMonthLabel">2026年7月</div>
       <button type="button" class="month-nav-btn-v2" id="timelineNextBtn" onclick="shiftTimelineMonth(1)">›</button>
     </div>
+
+    <div class="timeline-filter-outer"><div class="timeline-filter-bar" id="timelineFilterBar"></div></div>
 
     <div class="timeline-map-wrap"><div id="timelineMap"></div></div>
     <p class="timeline-empty-note" id="timelineEmptyNote" style="display:none;">この月の投稿はまだありません</p>
@@ -2597,6 +2605,7 @@ let timelineMonthDate = firstOfMonth(new Date());
 let timelineMap = null;
 let timelineHeatLayer = null;
 let timelineInitialized = false;
+let timelineTypeFilter = 'all'; // 'all' またはITEM_TYPESのlabel
 
 function firstOfMonth(date){
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -2636,12 +2645,54 @@ function ensureTimelineMap(){
   L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', { attribution:'地図: 国土地理院', maxZoom:18 }).addTo(timelineMap);
 }
 
+function renderTimelineFilterChips(){
+  const bar = document.getElementById('timelineFilterBar');
+  if (!bar || bar.dataset.built) { updateTimelineFilterChipsActive(); return; }
+  bar.dataset.built = '1';
+  bar.innerHTML = '';
+
+  const allChip = document.createElement('button');
+  allChip.type = 'button';
+  allChip.className = 'filter-chip active';
+  allChip.textContent = 'すべて';
+  allChip.onclick = () => setTimelineTypeFilter('all', allChip);
+  bar.appendChild(allChip);
+
+  ITEM_TYPES.forEach(item => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'filter-chip';
+    chip.innerHTML = `<span class="fe">${item.emoji}</span><span class="fl">${item.label}</span>`;
+    chip.onclick = () => setTimelineTypeFilter(item.label, chip);
+    bar.appendChild(chip);
+  });
+}
+
+function updateTimelineFilterChipsActive(){
+  const bar = document.getElementById('timelineFilterBar');
+  if (!bar) return;
+  bar.querySelectorAll('.filter-chip').forEach(c => {
+    const isAll = c.textContent.trim() === 'すべて' && timelineTypeFilter === 'all';
+    const isMatch = c.querySelector('.fl') && c.querySelector('.fl').textContent === timelineTypeFilter;
+    c.classList.toggle('active', isAll || isMatch);
+  });
+}
+
+function setTimelineTypeFilter(filter, chipEl){
+  timelineTypeFilter = filter;
+  document.querySelectorAll('#timelineFilterBar .filter-chip').forEach(c => c.classList.remove('active'));
+  chipEl.classList.add('active');
+  renderTimeline();
+}
+
 function renderTimeline(){
   ensureTimelineMap();
+  renderTimelineFilterChips();
 
   document.getElementById('timelineMonthLabel').textContent = monthLabelOf(timelineMonthDate);
 
-  const monthReports = reportsInMonth(timelineMonthDate);
+  const monthReports = reportsInMonth(timelineMonthDate)
+    .filter(({ d }) => timelineTypeFilter === 'all' || d.itemType === timelineTypeFilter);
   const heatPoints = monthReports.filter(({ d }) => d.location).map(({ d }) => [d.location.latitude, d.location.longitude, 0.6]);
 
   if (timelineHeatLayer) timelineMap.removeLayer(timelineHeatLayer);
@@ -2654,6 +2705,9 @@ function renderTimeline(){
     timelineMap.fitBounds(bounds.pad(0.35), { maxZoom:15 });
   } else {
     emptyNote.style.display = '';
+    emptyNote.textContent = (timelineTypeFilter === 'all')
+      ? 'この月の投稿はまだありません'
+      : `この月は「${timelineTypeFilter}」の投稿がまだありません`;
     timelineMap.setView(DEFAULT_CENTER, 13);
   }
 
