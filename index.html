@@ -2350,6 +2350,7 @@ function navigateToDetail(){
 }
 
 let allReports = [];
+const MAP_REPORTS_MONTHS_BACK = 12; // 地図に表示する投稿の対象期間（月数）。
 
 function renderMarkers(){
   markersLayer.clearLayers();
@@ -2367,19 +2368,53 @@ function renderMarkers(){
   if (heatLayer) map.removeLayer(heatLayer);
   heatLayer = L.heatLayer(heatPoints, { radius:32, blur:24, maxZoom:16 }).addTo(map);
   renderStampMarkers();
-  renderRanking();
+  const rankingViewEl = document.getElementById('view-ranking');
+  if (rankingViewEl && !rankingViewEl.classList.contains('hidden')) renderRanking();
   const timelineViewEl = document.getElementById('view-timeline');
   if (timelineViewEl && !timelineViewEl.classList.contains('hidden')) renderTimeline();
 }
 
+/**
+ * 地図・ヒートマップ用の投稿監視。
+ * ・以前は「新しい順に500件」を丸ごと監視していたが、投稿が増えるほど
+ *   起動や描画が重くなっていくため、「直近◯ヶ月分」だけを監視する方式に変更した。
+ * ・古い投稿がFirestoreから削除されるわけではないので、タイムラインや
+ *   調査履歴からは引き続き正しく参照できる。あくまで「地図上に生きているピン」
+ *   として扱う期間を区切っているだけ。
+ * ・万一の急増に備えて安全弁としてlimitも残してある（通常はここに達しない想定）。
+ */
 function loadReports(){
-  db.collection('reports').orderBy('createdAt','desc').limit(500).onSnapshot(snap => {
-    allReports = [];
-    snap.forEach(doc => allReports.push({ id: doc.id, d: doc.data() }));
-    renderMarkers();
-  }, err => console.error('reports取得エラー:', err));
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - MAP_REPORTS_MONTHS_BACK);
+  db.collection('reports')
+    .where('createdAt', '>=', firebase.firestore.Timestamp.fromDate(cutoff))
+    .orderBy('createdAt', 'desc')
+    .limit(3000)
+    .onSnapshot(snap => {
+      allReports = [];
+      snap.forEach(doc => allReports.push({ id: doc.id, d: doc.data() }));
+      renderMarkers();
+    }, err => console.error('reports取得エラー:', err));
 }
 loadReports();
+
+/**
+ * allReports（地図用・直近◯ヶ月分のキャッシュ）に見つからない場合、
+ * 調査履歴などから開かれた「地図の対象期間より古い投稿」の可能性があるため、
+ * Firestoreへ直接1件だけ取得しにいく。
+ */
+async function findReportForAction(id){
+  const cached = allReports.find(r => r.id === id);
+  if (cached) return cached;
+  try {
+    const doc = await db.collection('reports').doc(id).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, d: doc.data() };
+  } catch(err){
+    console.error('投稿取得エラー:', err);
+    return null;
+  }
+}
 
 /**
  * 自分が投稿したピンを削除して、やり直せるようにする
@@ -2410,8 +2445,8 @@ async function redoReport(id){
  */
 async function confirmReport(id){
   if (!currentUser){ showToast('ログインすると現地確認ができます'); return; }
-  const target = allReports.find(r => r.id === id);
-  if (!target) return;
+  const target = await findReportForAction(id);
+  if (!target){ showToast('この投稿は見つかりませんでした'); return; }
   if (target.d.reportedBy === currentUser.uid){
     showToast('自分の投稿は確認できません');
     return;
@@ -2446,8 +2481,8 @@ async function confirmReport(id){
  */
 async function unconfirmReport(id){
   if (!currentUser){ showToast('ログインすると取り消しができます'); return; }
-  const target = allReports.find(r => r.id === id);
-  if (!target) return;
+  const target = await findReportForAction(id);
+  if (!target){ showToast('この投稿は見つかりませんでした'); return; }
   const confirmedByDate = target.d.confirmedByDate || {};
   const today = todayDateStr();
   if (confirmedByDate[currentUser.uid] !== today){
@@ -2479,7 +2514,7 @@ async function unconfirmReport(id){
  */
 async function protectReport(id){
   if (!currentUser){ showToast('ログインすると保護報告ができます'); return; }
-  const target = allReports.find(r => r.id === id);
+  const target = await findReportForAction(id);
   if (target && target.d.reportedBy === currentUser.uid){
     showToast('自分の投稿は保護できません。他の人が確認するとポイントが入ります');
     return;
@@ -2511,7 +2546,7 @@ async function protectReport(id){
  */
 async function unprotectReport(id){
   if (!currentUser){ showToast('ログインすると取り消しができます'); return; }
-  const target = allReports.find(r => r.id === id);
+  const target = await findReportForAction(id);
   if (target && target.d.protectedBy && target.d.protectedBy !== currentUser.uid){
     showToast('この投稿を回収した本人のみ取り消せます');
     return;
@@ -2576,13 +2611,67 @@ function currentMonthLabel(){
   return `${now.getFullYear()}年${now.getMonth()+1}月`;
 }
 
+/* =========================================================
+   ランキング（今月分）専用データ
+   ・地図用のallReportsは「直近◯ヶ月」に限定しているため、ランキングは
+     専用に「今月分だけ」をFirestoreへ直接問い合わせる。総投稿数がどれだけ
+     増えても、今月分の件数は自然に少ないままなので重くならない。
+   ・「発見」はcreatedAt基準、「保護（現地確認で回収）」はprotectedAt基準で
+     月をまたぐことがある（先月見つけたゴミを今月回収した場合など）ため、
+     2本のクエリを合わせて使う。
+========================================================= */
+let monthlyReports = [];
+let monthlyReportsLoaded = false;
+let monthlyReportsMonthKey = null;
+let monthlyUnsubCreated = null;
+let monthlyUnsubProtected = null;
+let monthlyCreatedMap = new Map();
+let monthlyProtectedMap = new Map();
+
+function rebuildMonthlyReports(){
+  const merged = new Map();
+  monthlyCreatedMap.forEach((d, id) => merged.set(id, d));
+  monthlyProtectedMap.forEach((d, id) => merged.set(id, d));
+  monthlyReports = [...merged.entries()].map(([id, d]) => ({ id, d }));
+  monthlyReportsLoaded = true;
+  renderRanking();
+}
+
+function ensureMonthlyReportsListener(){
+  const currentKey = monthKeyOf(new Date());
+  if (monthlyReportsMonthKey === currentKey && monthlyUnsubCreated) return; // 今月分はすでに監視中
+  if (monthlyUnsubCreated) monthlyUnsubCreated();
+  if (monthlyUnsubProtected) monthlyUnsubProtected();
+  monthlyReportsMonthKey = currentKey;
+  monthlyReportsLoaded = false;
+  monthlyCreatedMap = new Map();
+  monthlyProtectedMap = new Map();
+  const start = firebase.firestore.Timestamp.fromDate(firstOfMonth(new Date()));
+
+  monthlyUnsubCreated = db.collection('reports')
+    .where('createdAt', '>=', start)
+    .onSnapshot(snap => {
+      monthlyCreatedMap = new Map();
+      snap.forEach(doc => monthlyCreatedMap.set(doc.id, doc.data()));
+      rebuildMonthlyReports();
+    }, err => console.error('今月の投稿(発見)取得エラー:', err));
+
+  monthlyUnsubProtected = db.collection('reports')
+    .where('protectedAt', '>=', start)
+    .onSnapshot(snap => {
+      monthlyProtectedMap = new Map();
+      snap.forEach(doc => monthlyProtectedMap.set(doc.id, doc.data()));
+      rebuildMonthlyReports();
+    }, err => console.error('今月の投稿(保護)取得エラー:', err));
+}
+
 function computeRanking(tab){
   const counts = new Map();
 
   if (tab === 'user'){
     // ユーザー別ランキングは「発見」と「保護（現地確認）」の両方を今月分だけ合算する
     // ※ 管理者ページからの投稿（reportedBy: 'admin'）はユーザーではないため集計から除外する
-    allReports.forEach(({ d }) => {
+    monthlyReports.forEach(({ d }) => {
       if (isThisMonth(d) && d.reportedBy && d.reportedBy !== 'admin'){
         const key = d.reportedBy;
         if (!counts.has(key)){
@@ -2611,7 +2700,7 @@ function computeRanking(tab){
     return [...counts.values()].sort((a,b) => b.count - a.count);
   }
 
-  allReports.filter(({ d }) => isThisMonth(d)).forEach(({ d }) => {
+  monthlyReports.filter(({ d }) => isThisMonth(d)).forEach(({ d }) => {
     const town = d.area && d.area.town;
     // 学区別は保存済みの area.gakku ではなく、町名から毎回 mapTownToGakku() で
     // 判定する。学区対応表(GAKKU_MAP)を更新しても、過去の投稿データを
@@ -2631,6 +2720,12 @@ function renderRanking(){
 
   const subtitleEl = document.getElementById('rankingSubtitle');
   if (subtitleEl) subtitleEl.textContent = `町別・学区別・ユーザー別の活躍を表示（${currentMonthLabel()}分・毎月リセット）`;
+
+  if (!monthlyReportsLoaded){
+    list.innerHTML = `<p class="ranking-empty">読み込み中…</p>`;
+    moreBtn.style.display = 'none';
+    return;
+  }
 
   const data = computeRanking(rankingTab);
   if (data.length === 0){
@@ -2693,11 +2788,19 @@ function expandRanking(){
 
 /* =========================================================
    タイムライン（月ごとの発見をヒートマップで振り返る）
+   ・以前はallReports（地図用の限定データ）から月別に抽出していたため、
+     対象期間より古い月のデータが欠けることがあった。
+   ・現在は「表示している月」のデータをその都度Firestoreへ直接問い合わせる
+     方式に変更したので、何ヶ月・何年前でも正しいデータが表示される。
+     今月分だけはランキング用のリアルタイムデータ（monthlyReports）を
+     そのまま再利用するので、追加の問い合わせは発生しない。
 ========================================================= */
 let timelineMonthDate = firstOfMonth(new Date());
 let timelineMap = null;
 let timelineHeatLayer = null;
 let timelineInitialized = false;
+let cachedTimelineMonths = null; // [monthKey, ...]（古い→新しい順）。初回だけFirestoreに最初の投稿の月を問い合わせて作る
+let timelineRenderToken = 0;     // 月の連打対策：古い結果が後から表示されてしまうのを防ぐ
 
 function firstOfMonth(date){
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -2710,24 +2813,56 @@ function monthLabelOf(date){
 }
 
 /**
- * 指定した月（Dateの年月部分のみ使用）に投稿された報告だけを抽出
- * ※allReportsは直近500件までのため、古い月ほどデータが欠ける場合があります
+ * 指定した月（Dateの年月部分のみ使用）に投稿された報告だけを取得する。
+ * 今月分はランキング用のリアルタイムデータを再利用し、過去の月は
+ * その都度Firestoreへ範囲指定で問い合わせる（何年遡っても正しいデータが出る）。
  */
-function reportsInMonth(date){
+async function reportsInMonth(date){
   const key = monthKeyOf(date);
-  return allReports.filter(({ d }) => reportYearMonth(d) === key);
+  if (key === monthKeyOf(new Date())){
+    return monthlyReports.filter(({ d }) => isThisMonth(d));
+  }
+  const start = firebase.firestore.Timestamp.fromDate(firstOfMonth(date));
+  const end = firebase.firestore.Timestamp.fromDate(new Date(date.getFullYear(), date.getMonth() + 1, 1));
+  try {
+    const snap = await db.collection('reports')
+      .where('createdAt', '>=', start)
+      .where('createdAt', '<', end)
+      .get();
+    const items = [];
+    snap.forEach(doc => items.push({ id: doc.id, d: doc.data() }));
+    return items;
+  } catch(err){
+    console.error('月別投稿取得エラー:', err);
+    return [];
+  }
 }
 
 /**
- * データが存在する月＋今月を合わせた一覧（古い→新しい順）
+ * データが存在しうる月＋今月を合わせた一覧（古い→新しい順）
+ * 「最初の投稿がある月」をFirestoreに1回だけ問い合わせて調べ、そこから今月まで並べる。
+ * （間に投稿0件の月が含まれても、開けば「まだデータがありません」の空表示になるだけ）
  */
-function getTimelineMonths(){
-  const keys = new Set([monthKeyOf(new Date())]);
-  allReports.forEach(({ d }) => {
-    const ym = reportYearMonth(d);
-    if (ym !== null) keys.add(ym);
-  });
-  return [...keys].sort((a,b) => a-b);
+async function getTimelineMonths(){
+  const nowKey = monthKeyOf(new Date());
+  if (cachedTimelineMonths){
+    const last = cachedTimelineMonths[cachedTimelineMonths.length - 1];
+    for (let k = last + 1; k <= nowKey; k++) cachedTimelineMonths.push(k);
+    return cachedTimelineMonths;
+  }
+  let startKey = nowKey;
+  try {
+    const snap = await db.collection('reports').orderBy('createdAt','asc').limit(1).get();
+    if (!snap.empty){
+      const ym = reportYearMonth(snap.docs[0].data());
+      if (ym !== null) startKey = ym;
+    }
+  } catch(err){
+    console.error('タイムライン開始月の取得エラー:', err);
+  }
+  cachedTimelineMonths = [];
+  for (let k = startKey; k <= nowKey; k++) cachedTimelineMonths.push(k);
+  return cachedTimelineMonths;
 }
 
 function ensureTimelineMap(){
@@ -2737,23 +2872,30 @@ function ensureTimelineMap(){
   L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', { attribution:'地図: 国土地理院', maxZoom:18 }).addTo(timelineMap);
 }
 
-function renderTimeline(){
+async function renderTimeline(){
   ensureTimelineMap();
+  const myToken = ++timelineRenderToken;
 
   document.getElementById('timelineMonthLabel').textContent = monthLabelOf(timelineMonthDate);
 
-  const monthReports = reportsInMonth(timelineMonthDate);
+  const emptyNote = document.getElementById('timelineEmptyNote');
+  emptyNote.textContent = '読み込み中…';
+  emptyNote.style.display = '';
+
+  const monthReports = await reportsInMonth(timelineMonthDate);
+  if (myToken !== timelineRenderToken) return; // その間に別の月に切り替えられていたら、この結果は捨てる
+
   const heatPoints = monthReports.filter(({ d }) => d.location).map(({ d }) => [d.location.latitude, d.location.longitude, 0.6]);
 
   if (timelineHeatLayer) timelineMap.removeLayer(timelineHeatLayer);
   timelineHeatLayer = L.heatLayer(heatPoints, { radius:32, blur:24, maxZoom:16 }).addTo(timelineMap);
 
-  const emptyNote = document.getElementById('timelineEmptyNote');
   if (heatPoints.length){
     emptyNote.style.display = 'none';
     const bounds = L.latLngBounds(heatPoints.map(p => [p[0], p[1]]));
     timelineMap.fitBounds(bounds.pad(0.35), { maxZoom:15 });
   } else {
+    emptyNote.textContent = 'この月の投稿はまだありません';
     emptyNote.style.display = '';
     timelineMap.setView(DEFAULT_CENTER, 13);
   }
@@ -2764,9 +2906,9 @@ function renderTimeline(){
   requestAnimationFrame(() => { if (timelineMap) timelineMap.invalidateSize(); });
 }
 
-function renderTimelineDots(){
+async function renderTimelineDots(){
   const wrap = document.getElementById('timelineDots');
-  const months = getTimelineMonths();
+  const months = await getTimelineMonths();
   const currentKey = monthKeyOf(timelineMonthDate);
 
   wrap.innerHTML = '';
@@ -2786,15 +2928,15 @@ function renderTimelineDots(){
   if (activeDot) activeDot.scrollIntoView({ inline:'center', block:'nearest' });
 }
 
-function updateTimelineNavButtons(){
-  const months = getTimelineMonths();
+async function updateTimelineNavButtons(){
+  const months = await getTimelineMonths();
   const idx = months.indexOf(monthKeyOf(timelineMonthDate));
   document.getElementById('timelinePrevBtn').disabled = idx <= 0;
   document.getElementById('timelineNextBtn').disabled = (idx === -1) || (idx >= months.length - 1);
 }
 
-function shiftTimelineMonth(delta){
-  const months = getTimelineMonths();
+async function shiftTimelineMonth(delta){
+  const months = await getTimelineMonths();
   const idx = months.indexOf(monthKeyOf(timelineMonthDate));
   const nextIdx = idx + delta;
   if (nextIdx < 0 || nextIdx >= months.length) return;
@@ -2813,12 +2955,11 @@ function countByType(reports){
   return map;
 }
 
-function openCompareSheet(){
+async function openCompareSheet(){
   const currDate = timelineMonthDate;
   const prevDate = new Date(currDate.getFullYear(), currDate.getMonth() - 1, 1);
 
-  const currReports = reportsInMonth(currDate);
-  const prevReports = reportsInMonth(prevDate);
+  const [currReports, prevReports] = await Promise.all([reportsInMonth(currDate), reportsInMonth(prevDate)]);
   const currCount = currReports.length, prevCount = prevReports.length;
   const diff = currCount - prevCount;
 
@@ -3362,7 +3503,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     document.getElementById('view-timeline').classList.toggle('hidden', target !== 'timeline');
     document.getElementById('filterBar').style.display = (target === 'map') ? '' : 'none';
     document.getElementById('homeStatusBar').style.display = (target === 'map') ? '' : 'none';
-    if (target === 'ranking') renderRanking();
+    if (target === 'ranking'){ ensureMonthlyReportsListener(); renderRanking(); }
     if (target === 'timeline') renderTimeline();
     if (target === 'map') goToMyLocation(false); else stopMyLocationWatch();
     if (target === 'mypage' && currentUser) loadMyStats(currentUser.uid);
