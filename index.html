@@ -207,18 +207,29 @@ header{
 }
 .toast.show{opacity:1;}
 
-/* ---------- 投稿完了スタンプ演出 ---------- */
+/* ---------- 投稿完了メッセージ演出 ---------- */
 .stamp-popup{
   position:fixed; left:50%; top:40%; z-index:200;
   transform:translate(-50%,-50%) scale(0.82);
   opacity:0; pointer-events:none;
   transition:opacity .3s ease, transform .3s cubic-bezier(.34,1.56,.64,1);
+  max-width:80vw;
 }
 .stamp-popup.show{opacity:1; transform:translate(-50%,-50%) scale(1); pointer-events:auto;}
-.stamp-popup-inner{position:relative; display:inline-block;}
-.stamp-popup img{
-  width:200px; height:auto; display:block;
-  filter:drop-shadow(0 12px 26px rgba(20,30,60,0.35));
+.stamp-popup-inner{
+  position:relative; display:flex; flex-direction:column; align-items:center; gap:6px;
+  background:linear-gradient(135deg, var(--teal), #2c8879);
+  border-radius:22px; padding:24px 28px 20px;
+  box-shadow:0 14px 32px rgba(20,30,60,0.4);
+}
+.stamp-popup .face{font-size:32px; line-height:1;}
+.stamp-popup .msg{
+  margin:0; max-width:240px; text-align:center;
+  color:#fff; font-weight:900; font-size:15.5px; line-height:1.65;
+  font-family:"Zen Kaku Gothic New", sans-serif;
+  /* 地図やコンテンツが背景にあっても文字がくっきり読めるよう、
+     不透明なカード背景＋影の二重がけでコントラストを確保する */
+  text-shadow:0 1px 0 rgba(0,0,0,0.25), 0 2px 6px rgba(0,0,0,0.35);
 }
 .stamp-close{
   position:absolute; top:-6px; right:-6px; z-index:1;
@@ -3388,15 +3399,82 @@ function openSheet(){
 function closeSheet(){ document.getElementById('sheetBackdrop').classList.remove('open'); }
 
 /* =========================================================
-   投稿完了スタンプ演出（親方スタンプをランダム表示 → ピコン音 → フェードアウト）
+   投稿完了メッセージ演出（親方のひとことをランダム表示 → ピコン音 → フェードアウト）
+   ※ 画像ファイル（親方スタンプ）が正しく表示されない環境があったため、
+   　画像はやめてテキストのみの演出に変更した。
 ========================================================= */
-const STAMP_FILES = [
-  'img/stamp1.webp',
-  'img/stamp2.webp',
-  'img/stamp3.webp',
-  'img/stamp4.webp',
-  'img/stamp5.webp',
-];
+
+/* 投稿した頻度（この端末での累計投稿回数）に応じて、親方のひとことの
+   雰囲気を変える。Firestoreへ毎回問い合わせると表示が遅れるため、
+   ここでは端末内のlocalStorageで簡易カウントする
+   （※他端末と合算した正確な合計ではなく、あくまで演出用の目安）。 */
+const MENTOR_MSG_COUNT_KEY = 'mentorMsgTotalCount';
+function bumpMentorMsgCount(){
+  let n = 0;
+  try { n = parseInt(localStorage.getItem(MENTOR_MSG_COUNT_KEY) || '0', 10) || 0; } catch(err){}
+  n += 1;
+  try { localStorage.setItem(MENTOR_MSG_COUNT_KEY, String(n)); } catch(err){}
+  return n;
+}
+
+const MENTOR_MESSAGES = {
+  // 1回目
+  first: [
+    'はじめての投稿、ようこそ！これがまちを守る第一歩や。',
+    'よし、初報告やな！その調子でどんどん教えてくれ。',
+    'ナイス発見！最初の一歩、しっかり見せてもらったで。',
+    '偉いぞ、はじめての投稿や！これからもよろしくな。'
+  ],
+  // 2〜4回目
+  early: [
+    'また来てくれたか！その気持ちがまちを変えるんや。',
+    '2度目も3度目もお手のもの、頼りにしとるで！',
+    '続けて投稿、ありがとうな。もう立派な仲間や。',
+    'その調子その調子！まちが少しずつきれいになっとるで。'
+  ],
+  // 5〜9回目
+  getting: [
+    'もう5回超えか、常連さんやな！助かっとるで。',
+    'その目、だいぶ鍛えられてきたんちゃうか？',
+    'ゴミ発見の腕、板についてきたな！この調子や。',
+    'みんなお前さんの投稿、頼りにしとるで。'
+  ],
+  // 10〜29回目
+  steady: [
+    '10回超え、もう立派な戦力やな！ありがとうさん。',
+    'そのペース、まちの誇りやで。これからも頼むな。',
+    '常連どころか主力やな、感謝しかないわ。',
+    'みんなの町がきれいなのは、お前さんのおかげでもあるんやで。'
+  ],
+  // 30〜59回目
+  veteran: [
+    '30回超え！？もう職人の域やな、恐れ入ったわ。',
+    'その継続力、誰にも真似できんで。ほんまありがとう。',
+    'ベテランの貫禄や。まちの守り神やな。',
+    'この町の景色、お前さんが守ってきたようなもんやで。'
+  ],
+  // 60回目以降
+  legend: [
+    '60回超え、伝説やな…。ワシもたじろぐレベルや。',
+    'もう親方超えとるんちゃうか、これは。脱帽やで。',
+    'まちの守護者、って呼ばせてもらうわ。ほんまお疲れさん。',
+    'ここまで来たら殿堂入りやな。心からありがとう。'
+  ]
+};
+
+function pickMentorTier(count){
+  if (count <= 1) return 'first';
+  if (count <= 4) return 'early';
+  if (count <= 9) return 'getting';
+  if (count <= 29) return 'steady';
+  if (count <= 59) return 'veteran';
+  return 'legend';
+}
+
+function pickMentorMessage(count){
+  const list = MENTOR_MESSAGES[pickMentorTier(count)];
+  return list[Math.floor(Math.random() * list.length)];
+}
 
 // Web Audio APIで「ピコン」という通知音を合成する（音声ファイル不要）
 function playPiconSound(){
@@ -3436,13 +3514,15 @@ function showRandomStamp(){
   stampTimers.forEach(t => clearTimeout(t));
   stampTimers = [];
 
-  const file = STAMP_FILES[Math.floor(Math.random() * STAMP_FILES.length)];
-  el.innerHTML = `<div class="stamp-popup-inner"><button type="button" class="stamp-close" onclick="hideRandomStamp()">✕</button><img src="${file}" alt="親方スタンプ"></div>`;
+  const count = bumpMentorMsgCount();
+  const msg = pickMentorMessage(count);
+  el.innerHTML = `<div class="stamp-popup-inner"><button type="button" class="stamp-close" onclick="hideRandomStamp()">✕</button><span class="face">🧑‍🔧</span><p class="msg">${msg}</p></div>`;
   playPiconSound();
 
   requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
-  stampTimers.push(setTimeout(() => el.classList.remove('show'), 1600));
-  stampTimers.push(setTimeout(() => { el.innerHTML = ''; }, 2050));
+  // 画像より文字は読むのに時間がかかるため、表示時間を少し長めにしている
+  stampTimers.push(setTimeout(() => el.classList.remove('show'), 2400));
+  stampTimers.push(setTimeout(() => { el.innerHTML = ''; }, 2850));
 }
 
 function hideRandomStamp(){
