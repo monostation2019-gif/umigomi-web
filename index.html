@@ -1899,9 +1899,12 @@ function checkStampProximity(latlng, accuracy){
   if (!isStampRallyActive()){ hideStampCaptureButton(); return; } // 離脱中は判定・通知を一切行わない
   if (activeFilter !== 'all' && activeFilter !== 'stamp'){ hideStampCaptureButton(); return; }
 
-  // GPSの誤差(accuracy)が大きい時は、その誤差分だけ捕獲判定の半径を広げて救済する
-  // （現在地がズレていても「実際は近くにいるはず」という前提でスタンプが取れるようにする）
-  const accBonus = (typeof accuracy === 'number' && accuracy > 30) ? Math.min(accuracy, 100) : 0;
+  // 実際のスマホのGPS誤差は屋外の開けた場所以外だと100mを超えることも珍しくない。
+  // 以前は誤差が100mを超えても救済幅を100mで頭打ちにしていたため、誤差が大きい
+  // まさにその時（＝一番救済が必要な時）に救済が効かず、「範囲内にいるはずなのに
+  // 捕獲ボタンが出ない」という不具合の主因になっていた。上限を200mまで引き上げ、
+  // より早い段階（誤差20m超）から救済を効かせるようにする。
+  const accBonus = (typeof accuracy === 'number' && accuracy > 20) ? Math.min(accuracy, 200) : 0;
 
   let nearestSpot = null, nearestDist = Infinity;
   for (const spot of STAMP_SPOTS){
@@ -1945,11 +1948,18 @@ function checkStampProximity(latlng, accuracy){
   }
   hideStampCaptureButton();
 
-  // 未獲得のスタンプに近づいたら高精度(GPSフル稼働)モードへ、離れたら省電力モードへ自動で切り替える
+  // 未獲得のスタンプに近づいたら高精度(GPSフル稼働)モードへ、離れたら省電力モードへ自動で切り替える。
+  // ※ 以前は誤差を考慮しない生の距離(nearestDist)だけで判定していたため、
+  //   「GPSの精度が悪く実際の距離が不確かな時ほど、高精度モードへの切り替えが
+  //   　起こりにくい」という悪循環になっていた（精度が悪い→距離が実際より遠く出る
+  //   　→切り替え条件を満たさない→精度が悪いまま、が繰り返される）。
+  //   誤差ぶん(accBonus)を差し引いた「実際にはもっと近いかもしれない距離」で
+  //   判定することで、精度が悪い状況ほど早めに高精度モードへ切り替わるようにする。
   if (nearestSpot){
-    if (!highAccuracyMode && nearestDist <= HIGH_ACCURACY_TRIGGER_DIST){
+    const adjustedDist = Math.max(0, nearestDist - accBonus);
+    if (!highAccuracyMode && adjustedDist <= HIGH_ACCURACY_TRIGGER_DIST){
       startLocationWatch(true, false);
-    } else if (highAccuracyMode && nearestDist > HIGH_ACCURACY_RELEASE_DIST){
+    } else if (highAccuracyMode && adjustedDist > HIGH_ACCURACY_RELEASE_DIST){
       startLocationWatch(false, false);
     }
   }
@@ -2271,8 +2281,10 @@ function startLocationWatch(highAccuracy, setView){
     maxZoom: 16,
     enableHighAccuracy: highAccuracy,
     timeout: 20000,
-    // 省電力モードでは多少古い位置情報のキャッシュも許容し、GPSの起動回数自体を減らす
-    maximumAge: highAccuracy ? 0 : 15000,
+    // 省電力モードでは多少古い位置情報のキャッシュも許容していたが、15秒は
+    // 「スタンプに近づいてもすぐには反応しない」体感の遅さの一因だったため、
+    // GPSの起動回数を極端に増やさない範囲でもっと短く（5秒）した。
+    maximumAge: highAccuracy ? 0 : 5000,
     watch: true
   });
 }
@@ -2322,8 +2334,18 @@ map.on('locationfound', (e) => {
   fetchHomeWeatherOnce(e.latlng.lat, e.latlng.lng);
 });
 
+// 高精度モードでのGPS取得に失敗（タイムアウト等）した場合、そのまま位置更新が
+// 止まって「ボタンも音も何も反応しない」ように見えてしまう不具合を防ぐため、
+// 少し待ってから省電力モードで取り直す（＝精度は落ちても、位置は取れる状態に戻す）。
+let locationErrorRetryTimer = null;
 map.on('locationerror', (e) => {
   console.warn('現在地取得エラー:', e.message);
+  if (highAccuracyMode){
+    if (locationErrorRetryTimer) clearTimeout(locationErrorRetryTimer);
+    locationErrorRetryTimer = setTimeout(() => {
+      startLocationWatch(false, false);
+    }, 3000);
+  }
 });
 
 goToMyLocation(false);
