@@ -167,6 +167,12 @@ input,textarea,select{font-family:inherit;}
   padding:14px; font-size:12.5px; color:var(--muted); text-align:center; margin-top:6px;
 }
 
+/* ---------- お知らせ管理パネル ---------- */
+#notifPanel{position:absolute; inset:0; background:var(--bg); z-index:15; overflow-y:auto; padding:12px 14px;}
+#notifPanel.hidden{display:none;}
+.notif-form-card{background:var(--card); border-radius:12px; padding:14px; box-shadow:0 1px 4px rgba(20,30,60,0.06); margin-bottom:14px;}
+.notif-form-card .form-actions{margin-top:10px;}
+
 .toast{
   position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
   background:var(--ink); color:#fff; padding:10px 18px; border-radius:99px; font-size:13px;
@@ -208,6 +214,7 @@ input,textarea,select{font-family:inherit;}
   <div class="admin-header">
     <h1>まちみっけ 管理者ページ</h1>
     <div style="display:flex; gap:14px;">
+      <button onclick="openNotifPanel()">📢 お知らせ</button>
       <button onclick="openListPanel()">📋 一覧</button>
       <button onclick="logout()">ログアウト</button>
     </div>
@@ -295,6 +302,28 @@ input,textarea,select{font-family:inherit;}
     <div class="dm-note">📨 ユーザーへのDM機能は今後追加予定です</div>
   </div>
   <button type="button" class="scroll-top-btn" id="scrollTopBtn" onclick="scrollListToTop()" aria-label="上に戻る">▲</button>
+
+  <!-- お知らせ管理パネル -->
+  <div id="notifPanel" class="hidden">
+    <div class="list-panel-header">
+      <h2>📢 お知らせ管理</h2>
+      <button onclick="closeNotifPanel()">✕</button>
+    </div>
+    <div class="notif-form-card">
+      <div class="form-row">
+        <label>タイトル</label>
+        <input type="text" id="notifTitleInput" placeholder="例：アプリをアップデートしました">
+      </div>
+      <div class="form-row">
+        <label>本文（任意）</label>
+        <textarea id="notifBodyInput" placeholder="お知らせの内容を入力してください"></textarea>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-submit" style="flex:1;" onclick="submitNotif()">配信する</button>
+      </div>
+    </div>
+    <div id="notifListAdmin"></div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -997,6 +1026,86 @@ function showToast(msg){
   el.classList.add('show');
   clearTimeout(window._adminToastTimer);
   window._adminToastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+/* =========================================================
+   お知らせ配信機能
+   ・notificationsコレクションに配信すると、index.html側の
+     ベルアイコンに赤い点がつき、ユーザーがタップすると読める。
+========================================================= */
+let allNotifications = [];
+
+db.collection('notifications').orderBy('createdAt', 'desc').limit(50).onSnapshot(snap => {
+  allNotifications = snap.docs.map(doc => {
+    const d = doc.data();
+    const ms = (d.createdAt && d.createdAt.toMillis) ? d.createdAt.toMillis() : 0;
+    return { id: doc.id, title: d.title || '', body: d.body || '', ms };
+  });
+  renderNotifAdminList();
+}, err => {
+  console.warn('お知らせの取得に失敗:', err);
+});
+
+function renderNotifAdminList(){
+  const wrap = document.getElementById('notifListAdmin');
+  if (!wrap) return;
+  if (allNotifications.length === 0){
+    wrap.innerHTML = '<p class="empty-note">お知らせはまだありません</p>';
+    return;
+  }
+  wrap.innerHTML = allNotifications.map(n => {
+    const date = n.ms ? new Date(n.ms).toLocaleString('ja-JP', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+    return `
+    <div class="admin-item">
+      <div class="em">📢</div>
+      <div class="info">
+        <div class="t">${escapeHtml(n.title)}</div>
+        <div class="d">${n.body ? escapeHtml(n.body) : '（本文なし）'}</div>
+        <div class="s">${date}</div>
+      </div>
+      <div class="actions">
+        <button type="button" class="del-btn" onclick="deleteNotif('${n.id}')">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openNotifPanel(){
+  document.getElementById('notifPanel').classList.remove('hidden');
+}
+function closeNotifPanel(){
+  document.getElementById('notifPanel').classList.add('hidden');
+}
+
+async function submitNotif(){
+  const title = document.getElementById('notifTitleInput').value.trim();
+  const body = document.getElementById('notifBodyInput').value.trim();
+  if (!title){ showToast('タイトルを入力してください'); return; }
+  try {
+    if (anonAuthPromise) await anonAuthPromise;
+    await db.collection('notifications').add({
+      title,
+      body,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById('notifTitleInput').value = '';
+    document.getElementById('notifBodyInput').value = '';
+    showToast('お知らせを配信しました');
+  } catch(err){
+    console.error('お知らせ配信エラー:', err);
+    showToast('配信に失敗しました');
+  }
+}
+
+async function deleteNotif(id){
+  if (!confirm('このお知らせを削除しますか？')) return;
+  try {
+    await db.collection('notifications').doc(id).delete();
+    showToast('削除しました');
+  } catch(err){
+    console.error('お知らせ削除エラー:', err);
+    showToast('削除に失敗しました');
+  }
 }
 
 /* =========================================================

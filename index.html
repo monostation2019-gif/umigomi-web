@@ -71,10 +71,17 @@ header{
 .brand-text .name{font-weight:900; font-size:17px;}
 .brand-text .sub{font-size:10.5px; font-weight:500; color:rgba(255,255,255,0.85); letter-spacing:.03em;}
 .header-btn{
+  position:relative;
   width:36px; height:36px; border-radius:50%;
   background:rgba(255,255,255,0.18); border:none; color:#fff;
   display:flex; align-items:center; justify-content:center; font-size:16px;
 }
+.notif-dot{
+  position:absolute; top:1px; right:1px; width:11px; height:11px; border-radius:50%;
+  background:var(--red); border:2px solid var(--blue-dark);
+  display:none;
+}
+.notif-dot.show{display:block;}
 
 /* ---------- ホーム日時・天気バー(ヘッダー直下、フィルターバーの上) ---------- */
 #homeStatusBar{
@@ -550,12 +557,6 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
   border-radius:999px; padding:11px 12px; font-weight:900; font-size:16px;
   color:var(--ink); font-family:"Zen Kaku Gothic New", sans-serif;
 }
-.timeline-filter-outer{
-  overflow-x:auto; white-space:nowrap; scrollbar-width:none;
-  -webkit-overflow-scrolling:touch; margin:0 0 12px; padding-bottom:2px;
-}
-.timeline-filter-outer::-webkit-scrollbar{display:none;}
-.timeline-filter-bar{display:inline-flex; gap:6px;}
 .timeline-map-wrap{
   height:320px; border-radius:20px; overflow:hidden; margin-bottom:10px; border:1px solid var(--line);
 }
@@ -649,6 +650,14 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
   flex:none; border:none; background:var(--blue); color:#fff; font-weight:700;
   font-size:12px; padding:8px 14px; border-radius:999px; font-family:"Noto Sans JP", sans-serif;
 }
+
+/* ---------- お知らせシート ---------- */
+.notif-row{padding:14px 2px; border-bottom:1px solid var(--line);}
+.notif-row:last-child{border-bottom:none;}
+.notif-row .t{font-size:14.5px; font-weight:700; color:var(--ink); display:flex; align-items:center; gap:6px;}
+.notif-row.unread .t::before{content:''; width:8px; height:8px; border-radius:50%; background:var(--red); flex:none;}
+.notif-row .b{font-size:13px; color:var(--ink); margin-top:6px; line-height:1.6; white-space:pre-wrap;}
+.notif-row .m{font-size:11.5px; color:var(--muted); margin-top:6px;}
 </style>
 </head>
 <body>
@@ -661,7 +670,7 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
       <span class="sub">みんなでつくる、きれいな未来MAP</span>
     </div>
   </div>
-  <button class="header-btn" onclick="showToast('お知らせはまだありません')">🔔</button>
+  <button class="header-btn" onclick="openNotifSheet()">🔔<span class="notif-dot" id="notifDot"></span></button>
 </header>
 
 <div class="stamp-popup" id="stampPopup"></div>
@@ -776,8 +785,6 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
       <div class="month-pill" id="timelineMonthLabel">2026年7月</div>
       <button type="button" class="month-nav-btn-v2" id="timelineNextBtn" onclick="shiftTimelineMonth(1)">›</button>
     </div>
-
-    <div class="timeline-filter-outer"><div class="timeline-filter-bar" id="timelineFilterBar"></div></div>
 
     <div class="timeline-map-wrap"><div id="timelineMap"></div></div>
     <p class="timeline-empty-note" id="timelineEmptyNote" style="display:none;">この月の投稿はまだありません</p>
@@ -1024,6 +1031,18 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
   </div>
 </div>
 
+<!-- お知らせシート（親方からのお知らせ・アップデート情報） -->
+<div class="sheet-backdrop" id="notifSheetBackdrop" onclick="if(event.target===this) closeNotifSheet()">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="detail-header">
+      <div class="detail-title"><span class="lb">お知らせ</span></div>
+      <button class="detail-close" onclick="closeNotifSheet()">✕</button>
+    </div>
+    <div id="notifList"></div>
+  </div>
+</div>
+
 <script>
 /* =========================================================
    Firebase 初期化
@@ -1041,6 +1060,68 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 const storage = firebase.storage();
+
+/* =========================================================
+   お知らせ機能
+   ・admin.html側で配信された通知（notificationsコレクション）を
+     新しい順に監視し、未読があればベルに赤い点を表示する。
+   ・「既読にした最終日時」は端末のlocalStorageに保存する簡易方式。
+     アカウントをまたいだ同期はしない（十分シンプルで実用的なため）。
+========================================================= */
+let allNotifications = [];
+const NOTIF_READ_KEY = 'mm_notif_last_read_at';
+function getNotifLastReadAt(){
+  const v = localStorage.getItem(NOTIF_READ_KEY);
+  return v ? Number(v) : 0;
+}
+function setNotifLastReadAt(ms){
+  localStorage.setItem(NOTIF_READ_KEY, String(ms));
+}
+function updateNotifDot(){
+  const dot = document.getElementById('notifDot');
+  if (!dot) return;
+  const lastRead = getNotifLastReadAt();
+  const hasUnread = allNotifications.some(n => n.ms > lastRead);
+  dot.classList.toggle('show', hasUnread);
+}
+db.collection('notifications').orderBy('createdAt', 'desc').limit(30).onSnapshot(snap => {
+  allNotifications = snap.docs.map(doc => {
+    const d = doc.data();
+    const ms = (d.createdAt && d.createdAt.toMillis) ? d.createdAt.toMillis() : 0;
+    return { id: doc.id, title: d.title || 'お知らせ', body: d.body || '', ms };
+  });
+  updateNotifDot();
+}, err => {
+  console.warn('お知らせの取得に失敗:', err);
+});
+function openNotifSheet(){
+  const listEl = document.getElementById('notifList');
+  const lastRead = getNotifLastReadAt();
+
+  if (allNotifications.length === 0){
+    listEl.innerHTML = '<p class="ranking-empty">お知らせはまだありません</p>';
+  } else {
+    listEl.innerHTML = allNotifications.map(n => {
+      const unread = n.ms > lastRead;
+      const date = n.ms ? new Date(n.ms).toLocaleString('ja-JP', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+      return `<div class="notif-row${unread ? ' unread' : ''}">
+        <div class="t">${escapeHtml(n.title)}</div>
+        ${n.body ? `<div class="b">${escapeHtml(n.body)}</div>` : ''}
+        <div class="m">${date}</div>
+      </div>`;
+    }).join('');
+  }
+
+  document.getElementById('notifSheetBackdrop').classList.add('open');
+
+  // 開いたタイミングで既読にする（次に来る新着だけが赤い点の対象になる）
+  const newestMs = allNotifications.length ? allNotifications[0].ms : Date.now();
+  setNotifLastReadAt(newestMs);
+  updateNotifDot();
+}
+function closeNotifSheet(){
+  document.getElementById('notifSheetBackdrop').classList.remove('open');
+}
 
 let currentUser = null;
 let activeFilter = 'all'; // ゴミ種類フィルター（'all' / 各itemType / 'stamp'）。スタンプ地点の表示判定でも使うため早めに宣言。
@@ -2605,7 +2686,6 @@ let timelineMonthDate = firstOfMonth(new Date());
 let timelineMap = null;
 let timelineHeatLayer = null;
 let timelineInitialized = false;
-let timelineTypeFilter = 'all'; // 'all' またはITEM_TYPESのlabel
 
 function firstOfMonth(date){
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -2645,54 +2725,12 @@ function ensureTimelineMap(){
   L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', { attribution:'地図: 国土地理院', maxZoom:18 }).addTo(timelineMap);
 }
 
-function renderTimelineFilterChips(){
-  const bar = document.getElementById('timelineFilterBar');
-  if (!bar || bar.dataset.built) { updateTimelineFilterChipsActive(); return; }
-  bar.dataset.built = '1';
-  bar.innerHTML = '';
-
-  const allChip = document.createElement('button');
-  allChip.type = 'button';
-  allChip.className = 'filter-chip active';
-  allChip.textContent = 'すべて';
-  allChip.onclick = () => setTimelineTypeFilter('all', allChip);
-  bar.appendChild(allChip);
-
-  ITEM_TYPES.forEach(item => {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'filter-chip';
-    chip.innerHTML = `<span class="fe">${item.emoji}</span><span class="fl">${item.label}</span>`;
-    chip.onclick = () => setTimelineTypeFilter(item.label, chip);
-    bar.appendChild(chip);
-  });
-}
-
-function updateTimelineFilterChipsActive(){
-  const bar = document.getElementById('timelineFilterBar');
-  if (!bar) return;
-  bar.querySelectorAll('.filter-chip').forEach(c => {
-    const isAll = c.textContent.trim() === 'すべて' && timelineTypeFilter === 'all';
-    const isMatch = c.querySelector('.fl') && c.querySelector('.fl').textContent === timelineTypeFilter;
-    c.classList.toggle('active', isAll || isMatch);
-  });
-}
-
-function setTimelineTypeFilter(filter, chipEl){
-  timelineTypeFilter = filter;
-  document.querySelectorAll('#timelineFilterBar .filter-chip').forEach(c => c.classList.remove('active'));
-  chipEl.classList.add('active');
-  renderTimeline();
-}
-
 function renderTimeline(){
   ensureTimelineMap();
-  renderTimelineFilterChips();
 
   document.getElementById('timelineMonthLabel').textContent = monthLabelOf(timelineMonthDate);
 
-  const monthReports = reportsInMonth(timelineMonthDate)
-    .filter(({ d }) => timelineTypeFilter === 'all' || d.itemType === timelineTypeFilter);
+  const monthReports = reportsInMonth(timelineMonthDate);
   const heatPoints = monthReports.filter(({ d }) => d.location).map(({ d }) => [d.location.latitude, d.location.longitude, 0.6]);
 
   if (timelineHeatLayer) timelineMap.removeLayer(timelineHeatLayer);
@@ -2705,9 +2743,6 @@ function renderTimeline(){
     timelineMap.fitBounds(bounds.pad(0.35), { maxZoom:15 });
   } else {
     emptyNote.style.display = '';
-    emptyNote.textContent = (timelineTypeFilter === 'all')
-      ? 'この月の投稿はまだありません'
-      : `この月は「${timelineTypeFilter}」の投稿がまだありません`;
     timelineMap.setView(DEFAULT_CENTER, 13);
   }
 
