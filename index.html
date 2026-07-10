@@ -6,7 +6,7 @@
 <title>まちみっけ</title>
 <meta name="theme-color" content="#2F6FED">
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
@@ -18,6 +18,21 @@
 <link rel="preconnect" href="https://unpkg.com">
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<!-- preconnectは接続を先に確立するだけで、ファイル本体のダウンロードは
+     <script>タグにパーサーが到達するまで始まらない。このページは
+     本体の<script>を画面の一番下に置いているため、それまでの間（ヘッダーや
+     地図の枠、フィルターバーなど大量のHTML/CSSが並ぶ部分）ずっとスクリプトの
+     ダウンロードが始まらず、体感の読み込みが長くなっていた。
+     preloadを使うと「実行はまだしないが、ファイル本体は今すぐ並行して
+     取得しておく」ことができ、パーサーが下の<script>タグに到達した時点では
+     既にダウンロードが完了/進行済みになるため、実行開始までの待ち時間が縮む。 -->
+<link rel="preload" as="script" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+<link rel="preload" as="script" href="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js">
 
 <style>
 :root{
@@ -661,7 +676,7 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 
 <header>
   <div class="brand">
-    <img class="leaf" src="/img/logo.png" alt="親方アイコン">
+    <img class="leaf" src="img/logo.png" alt="親方アイコン">
     <div class="brand-text">
       <span class="name">まちみっけ</span>
       <span class="sub">みんなでつくる、きれいな未来MAP</span>
@@ -1047,6 +1062,12 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
      枠だけでも表示できるよう、意図的に一番下に移動した。
      ※ 順番は変更しないこと（leaflet→leaflet.heat→firebase各種の順で
         後続が前のものに依存している）
+     ※ defer/asyncは使わない：この直後の巨大な<script>（アプリ本体）が
+        firebase.initializeApp() や L.map() をトップレベルで即実行しており、
+        これらのライブラリ読み込みが完全に終わってから続けて実行される
+        必要があるため。上のhead内のpreloadタグでファイル本体は事前に
+        並行ダウンロード済みになっているので、ここでの待ち時間は
+        「ダウンロード」ではなく「実行」だけで済むはず。
 ========================================================= -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
@@ -1633,7 +1654,7 @@ async function saveProfile(){
      置き換える場合も、同じフィールド名（lat/lng/radius/title/historyText/photo）
      にしておけば差し替えが容易。
 ========================================================= */
-const STAMP_ICON_DATA_URL = '/img/stamp-icon.png';
+const STAMP_ICON_DATA_URL = 'img/stamp-icon.png';
 
 // スタンプ地点はFirestoreの'stampSpots'コレクションから読み込む
 // （admin.htmlで管理者がピン登録すると、ここにリアルタイムで反映される）
@@ -1842,13 +1863,13 @@ async function showBackgroundStampNotification(spot, distanceMeters){
       const reg = await navigator.serviceWorker.ready;
       reg.showNotification(title, {
         body,
-        icon: '/icon-192.png',
-        badge: '/icon-192.png',
+        icon: 'icon-192.png',
+        badge: 'icon-192.png',
         tag: `stamp-${spot.id}`,
         vibrate: [120, 60, 120]
       });
     } else {
-      new Notification(title, { body, icon: '/icon-192.png' });
+      new Notification(title, { body, icon: 'icon-192.png' });
     }
   } catch (err){
     console.warn('バックグラウンド通知の表示に失敗:', err);
@@ -3370,11 +3391,11 @@ function closeSheet(){ document.getElementById('sheetBackdrop').classList.remove
    投稿完了スタンプ演出（親方スタンプをランダム表示 → ピコン音 → フェードアウト）
 ========================================================= */
 const STAMP_FILES = [
-  '/img/stamp1.webp',
-  '/img/stamp2.webp',
-  '/img/stamp3.webp',
-  '/img/stamp4.webp',
-  '/img/stamp5.webp',
+  'img/stamp1.webp',
+  'img/stamp2.webp',
+  'img/stamp3.webp',
+  'img/stamp4.webp',
+  'img/stamp5.webp',
 ];
 
 // Web Audio APIで「ピコン」という通知音を合成する（音声ファイル不要）
