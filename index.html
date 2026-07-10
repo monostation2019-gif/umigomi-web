@@ -32,7 +32,6 @@
 <link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js">
 <link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js">
 <link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js">
-<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js">
 
 <style>
 :root{
@@ -581,12 +580,30 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
   color:var(--ink); font-family:"Zen Kaku Gothic New", sans-serif;
 }
 .timeline-map-wrap{
-  height:320px; border-radius:20px; overflow:hidden; margin-bottom:10px; border:1px solid var(--line);
+  height:440px; border-radius:20px; overflow:hidden; margin-bottom:10px; border:1px solid var(--line);
 }
 #timelineMap{width:100%; height:100%;}
 .timeline-empty-note{
   font-size:12px; color:var(--muted); text-align:center; padding:8px 0 2px;
 }
+/* ---------- タイムライン：ゴミ種類別の内訳（スタンプラリーは含まない） ---------- */
+.timeline-type-breakdown{margin:6px 2px 4px;}
+.ttb-group{margin-bottom:12px;}
+.ttb-group:last-child{margin-bottom:0;}
+.ttb-group-label{
+  font-size:11.5px; font-weight:800; color:var(--muted); margin:0 0 7px 2px;
+  font-family:"Noto Sans JP", sans-serif;
+}
+.ttb-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(84px,1fr)); gap:8px;}
+.ttb-item{
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+  background:#F3F7FF; border:1px solid #DCE7FB; border-radius:14px;
+  padding:9px 6px 8px;
+}
+.ttb-item .em{font-size:19px; line-height:1;}
+.ttb-item .lb{font-size:10px; color:var(--muted); text-align:center; line-height:1.3;}
+.ttb-item .ct{font-size:13.5px; font-weight:900; color:var(--ink);}
+.ttb-empty{font-size:12px; color:var(--muted); text-align:center; padding:6px 0;}
 .timeline-slider-outer{
   overflow-x:auto; scrollbar-width:none; margin:10px 0 2px;
 }
@@ -811,6 +828,7 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 
     <div class="timeline-map-wrap"><div id="timelineMap"></div></div>
     <p class="timeline-empty-note" id="timelineEmptyNote" style="display:none;">この月の投稿はまだありません</p>
+    <div class="timeline-type-breakdown" id="timelineTypeBreakdown"></div>
 
     <div class="timeline-slider-outer"><div class="timeline-slider" id="timelineDots"></div></div>
 
@@ -1085,7 +1103,10 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
+<!-- firebase-storage-compat.jsは削除した。写真は圧縮してBase64のままFirestoreに
+     直接保存する方式で、Firebase Storageは実際には使われていなかったため
+     （storage変数は宣言だけされ、どこからも参照されていなかった）。
+     1本分の読み込み・パース・実行を丸ごと減らせる。 -->
 
 <script>
 /* =========================================================
@@ -1103,7 +1124,6 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
-const storage = firebase.storage();
 
 /* =========================================================
    お知らせ機能
@@ -2899,11 +2919,25 @@ async function getTimelineMonths(){
   return cachedTimelineMonths;
 }
 
+let timelineStdLayer = null;
+let timelinePhotoLayer = null;
 function ensureTimelineMap(){
   if (timelineMap) return;
   timelineMap = L.map('timelineMap', { zoomControl:false, attributionControl:false, scrollWheelZoom:false })
     .setView(DEFAULT_CENTER, 13);
-  L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', { attribution:'地図: 国土地理院', maxZoom:18 }).addTo(timelineMap);
+
+  // メインの地図と同じ操作感になるよう、通常地図／衛星写真の切り替えと
+  // ズームボタンを追加した（地図を大きくした分、操作もしやすくする）
+  timelineStdLayer = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {
+    attribution:'地図: 国土地理院', maxZoom:18
+  }).addTo(timelineMap);
+
+  timelinePhotoLayer = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
+    attribution:'写真: 国土地理院', maxZoom:18
+  });
+
+  L.control.layers({ '通常地図': timelineStdLayer, '写真（衛星）': timelinePhotoLayer }, null, { position:'topright' }).addTo(timelineMap);
+  L.control.zoom({ position:'bottomright' }).addTo(timelineMap);
 }
 
 async function renderTimeline(){
@@ -2936,8 +2970,49 @@ async function renderTimeline(){
 
   renderTimelineDots();
   updateTimelineNavButtons();
+  renderTimelineTypeBreakdown(monthReports);
 
   requestAnimationFrame(() => { if (timelineMap) timelineMap.invalidateSize(); });
+}
+
+/**
+ * 選択中の月の投稿を「ゴミの種類別」に集計して表示する。
+ * ※ スタンプラリー（STAMP_SPOTS）とは無関係で、通常の投稿（reports）だけを対象にする。
+ * ※ renderTimeline()が既に取得済みのmonthReportsをそのまま再利用するため、
+ * 　このために追加でFirestoreへ問い合わせることはしない。
+ */
+function renderTimelineTypeBreakdown(monthReports){
+  const wrap = document.getElementById('timelineTypeBreakdown');
+  if (!wrap) return;
+
+  const counts = countByType(monthReports); // Map<ラベル, 件数>
+  if (counts.size === 0){
+    wrap.innerHTML = '<p class="ttb-empty">この月の種類別内訳はまだありません</p>';
+    return;
+  }
+
+  const groups = {};
+  counts.forEach((count, label) => {
+    const def = findItemType(label);
+    const cat = (def && def.cat) || 'ポイ捨て';
+    const emoji = (def && def.emoji) || '🗑️';
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push({ label, emoji, count });
+  });
+
+  const catOrder = ['ポイ捨て', '海ごみ'];
+  Object.keys(groups).forEach(cat => { if (!catOrder.includes(cat)) catOrder.push(cat); });
+
+  wrap.innerHTML = catOrder.filter(cat => groups[cat] && groups[cat].length).map(cat => {
+    const items = groups[cat].slice().sort((a,b) => b.count - a.count);
+    const itemsHtml = items.map(it => `
+      <div class="ttb-item">
+        <span class="em">${it.emoji}</span>
+        <span class="lb">${escapeHtml(it.label)}</span>
+        <span class="ct">${it.count}件</span>
+      </div>`).join('');
+    return `<div class="ttb-group"><p class="ttb-group-label">${escapeHtml(cat)}</p><div class="ttb-grid">${itemsHtml}</div></div>`;
+  }).join('');
 }
 
 async function renderTimelineDots(){
