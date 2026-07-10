@@ -6,12 +6,10 @@
 <title>まちみっけ｜管理者ページ</title>
 <meta name="robots" content="noindex, nofollow">
 
+<!-- 早めに接続だけ確立しておく（本体の読み込みは画面下部で行う。詳細は下の説明コメント参照） -->
+<link rel="preconnect" href="https://unpkg.com">
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 
 <style>
 :root{
@@ -327,6 +325,18 @@ input,textarea,select{font-family:inherit;}
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- =========================================================
+     Leaflet・Firebaseの読み込みはここ（画面の中身を全部書いた後）に
+     あえて配置している。<head>内に置くとダウンロード＆実行が終わる
+     まで画面が真っ白のまま止まってしまうため、先にログイン画面だけ
+     でも表示できるよう、意図的に一番下に移動した。
+     ※ 順番は変更しないこと
+========================================================= -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 
 <script>
 /* =========================================================

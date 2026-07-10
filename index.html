@@ -11,16 +11,13 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 
+<!-- 早めに接続だけ確立しておく（本体の読み込みは画面下部で行う。詳細は下の説明コメント参照） -->
+<link rel="preconnect" href="https://unpkg.com">
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
-
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 
 <style>
 :root{
@@ -1042,6 +1039,21 @@ textarea.text-input{resize:none; font-family:"Noto Sans JP", sans-serif; line-he
     <div id="notifList"></div>
   </div>
 </div>
+
+<!-- =========================================================
+     Leaflet・Firebaseの読み込みはここ（画面の中身を全部書いた後）に
+     あえて配置している。<head>内に置くとダウンロード＆実行が終わる
+     まで画面が真っ白のまま止まってしまうため、先にヘッダーや地図の
+     枠だけでも表示できるよう、意図的に一番下に移動した。
+     ※ 順番は変更しないこと（leaflet→leaflet.heat→firebase各種の順で
+        後続が前のものに依存している）
+========================================================= -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 
 <script>
 /* =========================================================
