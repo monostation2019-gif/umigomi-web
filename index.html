@@ -1277,6 +1277,11 @@ auth.onAuthStateChanged(user => {
     loadUserProfile(user.uid);
     loadMyStats(user.uid);
     loadCollectedStamps(user.uid);
+    // ランキングは今までタブを開いた瞬間に初めてFirestoreへ接続していたため、
+    // 開くたびに「読み込み中…」を待つことになっていた。起動直後（スプラッシュを
+    // 消すのと同じタイミング）から先読みを始めておくことで、実際にタブを
+    // 開く頃には既にデータが揃っている状態になり、体感の待ち時間が減る。
+    ensureMonthlyReportsListener();
     hideSplash();
   } else {
     // 未ログインの場合はログイン画面（login.html）へ
@@ -1375,12 +1380,17 @@ function signInApple(){
 }
 
 function loadMyStats(uid){
+  // 以前は該当する投稿を「全件ダウンロードして件数を数える」方式だったため、
+  // 1人のユーザーの投稿・保護の累計が増えるほど、起動のたびに読み込みが
+  // 重くなっていく（ユーザーが増える・使い込まれるほど遅くなる）構造だった。
+  // count()集計クエリは、本文を1件も転送せず「件数」だけをサーバー側で
+  // 数えて返すため、件数がどれだけ増えても軽いまま保てる。
   Promise.all([
-    db.collection('reports').where('reportedBy','==',uid).get(),
-    db.collection('reports').where('protectedBy','==',uid).get()
+    db.collection('reports').where('reportedBy','==',uid).count().get(),
+    db.collection('reports').where('protectedBy','==',uid).count().get()
   ]).then(([foundSnap, protectSnap]) => {
-    const foundCount = foundSnap.size;
-    const protectCount = protectSnap.size;
+    const foundCount = foundSnap.data().count;
+    const protectCount = protectSnap.data().count;
     document.getElementById('statCount').textContent = foundCount;
     document.getElementById('statProtect').textContent = protectCount;
     document.getElementById('statPoints').textContent = (foundCount + protectCount) * 10;
@@ -1393,11 +1403,11 @@ function refreshMyStats(){
   const btn = document.getElementById('statsRefreshBtn');
   btn.disabled = true; btn.textContent = '更新中…';
   Promise.all([
-    db.collection('reports').where('reportedBy','==',currentUser.uid).get(),
-    db.collection('reports').where('protectedBy','==',currentUser.uid).get()
+    db.collection('reports').where('reportedBy','==',currentUser.uid).count().get(),
+    db.collection('reports').where('protectedBy','==',currentUser.uid).count().get()
   ]).then(([foundSnap, protectSnap]) => {
-    const foundCount = foundSnap.size;
-    const protectCount = protectSnap.size;
+    const foundCount = foundSnap.data().count;
+    const protectCount = protectSnap.data().count;
     document.getElementById('statCount').textContent = foundCount;
     document.getElementById('statProtect').textContent = protectCount;
     document.getElementById('statPoints').textContent = (foundCount + protectCount) * 10;
@@ -3676,8 +3686,8 @@ function openSheet(){
 }
 function closeSheet(){
   document.getElementById('sheetBackdrop').classList.remove('open');
-  // 投稿フォームを閉じたタイミングで、保留中の更新があればバナーを出す
-  if (typeof pendingUpdateReg !== 'undefined' && pendingUpdateReg) showUpdateBanner(pendingUpdateReg);
+  // 投稿フォームを閉じたタイミングで、保留中の更新があれば安全に適用する
+  if (typeof tryApplyPendingUpdate === 'function') tryApplyPendingUpdate();
 }
 
 /* =========================================================
@@ -4022,6 +4032,25 @@ function isUserMidTask(){
   const sheet = document.getElementById('sheetBackdrop');
   return !!(sheet && sheet.classList.contains('open'));
 }
+/**
+ * 今すぐ更新を適用しても実害がないタイミングかどうか。
+ * ・投稿フォームを開いていない（＝入力中の書きかけデータがない）
+ * ・または、画面が見えていない（バックグラウンド。適用してもユーザーは気づかない）
+ */
+function isSafeToUpdateNow(){
+  return !isUserMidTask() || document.visibilityState === 'hidden';
+}
+
+let pendingUpdateReg = null;
+function tryApplyPendingUpdate(){
+  if (!pendingUpdateReg) return;
+  if (!isSafeToUpdateNow()) return;
+  const reg = pendingUpdateReg;
+  pendingUpdateReg = null;
+  const banner = document.getElementById('updateBanner');
+  if (banner) banner.remove();
+  activateNewServiceWorker(reg);
+}
 
 if ('serviceWorker' in navigator){
   window.addEventListener('load', () => {
@@ -4031,42 +4060,50 @@ if ('serviceWorker' in navigator){
     // 「サーバー上のsw.jsを書き換えても変化なしと判定されて自動更新が効かない」
     // という不具合が起きる。
     navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
-      // すでに新しいバージョンが待機中なら、バナーで知らせる（即適用はしない）
-      if (reg.waiting) showUpdateBanner(reg);
+      // すでに新しいバージョンが待機中なら、安全なタイミングで適用する
+      if (reg.waiting){ pendingUpdateReg = reg; tryApplyPendingUpdate(); }
 
-      // 新しいService Workerが見つかったら、インストール完了時にバナーで知らせる。
-      // ・以前はここで即座に適用→自動リロードしていたが、投稿の途中や
-      //   閲覧の途中でも問答無用でリロードされ、画面が白くなる／入力中の
-      //   データが消える原因になっていた。ユーザーの操作を挟むことで、
-      //   本人が区切りのいいタイミングで更新できるようにする。
+      // 新しいService Workerが見つかったら、インストール完了時に
+      // 「安全なら即適用、投稿フォーム入力中なら保留」する。
+      // ・以前は問答無用で即座に適用→自動リロードしていたが、投稿の途中でも
+      //   リロードされ、書きかけの写真やGPSデータが消える原因になっていた。
+      //   かといって「更新するボタンを押すまで一切適用しない」方式にすると、
+      //   誰もボタンを押さないまま古いバージョンで使われ続けてしまう。
+      //   なので基本は自動適用のままにして、危険な瞬間（投稿フォームが
+      //   開いている間）だけ避ける方式にした。
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;
         if (!newWorker) return;
         newWorker.addEventListener('statechange', () => {
           if (newWorker.state === 'installed' && navigator.serviceWorker.controller){
-            showUpdateBanner(reg);
+            pendingUpdateReg = reg;
+            tryApplyPendingUpdate();
           }
         });
       });
 
       // 更新チェックの頻度は「アプリを開き直した／フォアグラウンドに戻した」
-      // タイミングに絞る（以前はこれに加えて30秒おきの強制ポーリングもあり、
-      // チェック頻度が過剰だった。頻度が高いほど「操作中に更新を検知して
-      // バナーが出る／裏で再インストールが走る」タイミングも増えてしまうため、
-      // 必要十分な頻度まで落とす）。
+      // タイミングに絞る。あわせて、投稿フォームを閉じた時・画面が非表示に
+      // なった時にも「保留中の更新があれば今すぐ適用」を試みる。
       reg.update();
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') reg.update();
+        tryApplyPendingUpdate();
       });
       // タブがフォアグラウンドに戻ってきた時（pageshowはbfcache復帰も拾える）。
       // iOSのホーム画面standalone起動では、visibilitychangeが発火しない
       // ケースがあるための保険。
       window.addEventListener('pageshow', () => reg.update());
+
+      // 万一、投稿フォームを開きっぱなしにするなどして保留が長時間続いた
+      // 場合の保険として、5分後にまだ保留中ならバナーを出し、ユーザーの
+      // 判断で更新できるようにする（普段のフローではまず出ない想定）。
+      setTimeout(() => {
+        if (pendingUpdateReg) showUpdateBanner(pendingUpdateReg);
+      }, 5 * 60 * 1000);
     }).catch(err => console.warn('SW登録失敗:', err));
 
-    // 新しいService Workerが有効化された（＝ユーザーがバナーの「更新する」を
-    // 押した、または次回入力中でないタイミングで自動適用された）後、
-    // 一度だけページを再読み込みする
+    // 新しいService Workerが有効化された後、一度だけページを再読み込みする
     let refreshingPage = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (refreshingPage) return;
@@ -4077,21 +4114,14 @@ if ('serviceWorker' in navigator){
 }
 
 /**
- * バナー経由、または「入力中でない」ことを確認した上で、待機中の新しい
- * Service Workerを適用する。
+ * 待機中の新しいService Workerを適用する。
  */
 function activateNewServiceWorker(reg){
   if (!reg.waiting) return;
   reg.waiting.postMessage({ type: 'SKIP_WAITING' });
 }
 
-let pendingUpdateReg = null;
 function showUpdateBanner(reg){
-  pendingUpdateReg = reg;
-  // 投稿フォーム入力中で、かつユーザーがまだ手動更新を選んでいない場合は、
-  // 画面を止めないようバナー表示自体をいったん見送り、入力が終わった
-  // タイミング（closeSheet実行時など）で改めて表示する。
-  if (isUserMidTask()) return;
   if (document.getElementById('updateBanner')) return;
   const el = document.createElement('div');
   el.id = 'updateBanner';
@@ -4102,8 +4132,8 @@ function showUpdateBanner(reg){
   document.body.appendChild(el);
   document.getElementById('updateBannerBtn').onclick = () => {
     activateNewServiceWorker(reg);
-    el.remove();
     pendingUpdateReg = null;
+    el.remove();
   };
 }
 </script>
