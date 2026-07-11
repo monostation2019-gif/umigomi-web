@@ -4104,9 +4104,35 @@ if ('serviceWorker' in navigator){
     }).catch(err => console.warn('SW登録失敗:', err));
 
     // 新しいService Workerが有効化された後、一度だけページを再読み込みする
+    //
+    // ▼ここに「リロードループの歯止め」を追加。
+    // 本来は「新しいバージョンが見つかった→適用→リロード」は一回で
+    // 終わるはずだが、何らかの理由で毎回「新しいバージョンがある」と
+    // 誤判定され続けると、開くたびに白画面→自動リロードを無限に繰り返す
+    // 事故が起きうる。そこで「直近15秒以内に2回以上リロードした」場合は
+    // 自動リロードを止めて、ユーザーが自分の意思で押せる更新ボタン
+    // （バナー）だけを出すようにする。これにより最悪でも数回で
+    // ループが止まり、アプリが使える状態に落ち着く。
     let refreshingPage = false;
+    const RELOAD_GUARD_KEY = 'mm_sw_reload_log';
+    function recordReloadAndCheckLoop(){
+      const now = Date.now();
+      let log = [];
+      try { log = JSON.parse(sessionStorage.getItem(RELOAD_GUARD_KEY) || '[]'); } catch(e){}
+      // 15秒より前の記録は捨てる（普通の連続アップデートまで誤検知しないため）
+      log = log.filter(t => now - t < 15000);
+      const isLoop = log.length >= 2;
+      log.push(now);
+      sessionStorage.setItem(RELOAD_GUARD_KEY, JSON.stringify(log));
+      return isLoop;
+    }
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (refreshingPage) return;
+      if (recordReloadAndCheckLoop()){
+        console.warn('SW更新の自動リロードがループしている疑いがあるため、自動リロードを停止しました。');
+        showUpdateBanner({ waiting: navigator.serviceWorker.controller });
+        return;
+      }
       refreshingPage = true;
       window.location.reload();
     });
