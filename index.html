@@ -3674,7 +3674,11 @@ function openSheet(){
   ensureMiniMap();
   setTimeout(() => { miniMap.invalidateSize(); locateMe(); }, 280);
 }
-function closeSheet(){ document.getElementById('sheetBackdrop').classList.remove('open'); }
+function closeSheet(){
+  document.getElementById('sheetBackdrop').classList.remove('open');
+  // 投稿フォームを閉じたタイミングで、保留中の更新があればバナーを出す
+  if (typeof pendingUpdateReg !== 'undefined' && pendingUpdateReg) showUpdateBanner(pendingUpdateReg);
+}
 
 /* =========================================================
    投稿完了メッセージ演出（親方のひとことをランダム表示 → ピコン音 → フェードアウト）
@@ -4009,6 +4013,16 @@ window.addEventListener('unhandledrejection', (e) => {
    （ホーム画面アイコンから開いた時に古いキャッシュが
    　表示され続けてしまう問題への対応）
 ========================================================= */
+/**
+ * 投稿フォーム（ゴミ発見の投稿シート）を入力中かどうかの判定。
+ * ・入力中に予告なくリロードされると、撮った写真やGPS取得結果が
+ *   消えてしまうため、更新の自動適用は「入力中でない時」に限る。
+ */
+function isUserMidTask(){
+  const sheet = document.getElementById('sheetBackdrop');
+  return !!(sheet && sheet.classList.contains('open'));
+}
+
 if ('serviceWorker' in navigator){
   window.addEventListener('load', () => {
     // updateViaCache:'none' を指定し、sw.js自体をブラウザのHTTPキャッシュから
@@ -4017,40 +4031,42 @@ if ('serviceWorker' in navigator){
     // 「サーバー上のsw.jsを書き換えても変化なしと判定されて自動更新が効かない」
     // という不具合が起きる。
     navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
-      // すでに新しいバージョンが待機中なら、ユーザーの操作を待たずにすぐ適用する
-      if (reg.waiting) activateNewServiceWorker(reg);
+      // すでに新しいバージョンが待機中なら、バナーで知らせる（即適用はしない）
+      if (reg.waiting) showUpdateBanner(reg);
 
-      // 新しいService Workerが見つかったら、インストール完了時にすぐ適用する
+      // 新しいService Workerが見つかったら、インストール完了時にバナーで知らせる。
+      // ・以前はここで即座に適用→自動リロードしていたが、投稿の途中や
+      //   閲覧の途中でも問答無用でリロードされ、画面が白くなる／入力中の
+      //   データが消える原因になっていた。ユーザーの操作を挟むことで、
+      //   本人が区切りのいいタイミングで更新できるようにする。
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;
         if (!newWorker) return;
         newWorker.addEventListener('statechange', () => {
           if (newWorker.state === 'installed' && navigator.serviceWorker.controller){
-            activateNewServiceWorker(reg);
+            showUpdateBanner(reg);
           }
         });
       });
 
-      // アプリをホーム画面から開き直した時・フォアグラウンドに戻した時に
-      // 更新がないかその都度チェックする
+      // 更新チェックの頻度は「アプリを開き直した／フォアグラウンドに戻した」
+      // タイミングに絞る（以前はこれに加えて30秒おきの強制ポーリングもあり、
+      // チェック頻度が過剰だった。頻度が高いほど「操作中に更新を検知して
+      // バナーが出る／裏で再インストールが走る」タイミングも増えてしまうため、
+      // 必要十分な頻度まで落とす）。
       reg.update();
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') reg.update();
       });
-      // タブがフォアグラウンドに戻ってきた時（pageshowはbfcache復帰も拾える）にも
-      // チェックしておくと、ホーム画面アイコンから開き直した時の検知漏れを減らせる
+      // タブがフォアグラウンドに戻ってきた時（pageshowはbfcache復帰も拾える）。
+      // iOSのホーム画面standalone起動では、visibilitychangeが発火しない
+      // ケースがあるための保険。
       window.addEventListener('pageshow', () => reg.update());
-      // ホーム画面アプリを開き直した瞬間にも即チェック（iOSのstandalone起動対策）
-      window.addEventListener('focus', () => reg.update());
-      // iOSのホーム画面standalone起動では、上記のイベントが一切発火しないまま
-      // 前回の画面がそのまま復元されるケースがあるため、保険として
-      // 表示中は30秒おきに強制チェックする（負荷は軽微：sw.jsの取得のみ）
-      setInterval(() => {
-        if (document.visibilityState === 'visible') reg.update();
-      }, 30000);
     }).catch(err => console.warn('SW登録失敗:', err));
 
-    // 新しいService Workerが有効化されたら、一度だけ自動でページを再読み込みする
+    // 新しいService Workerが有効化された（＝ユーザーがバナーの「更新する」を
+    // 押した、または次回入力中でないタイミングで自動適用された）後、
+    // 一度だけページを再読み込みする
     let refreshingPage = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (refreshingPage) return;
@@ -4061,17 +4077,21 @@ if ('serviceWorker' in navigator){
 }
 
 /**
- * ユーザーにボタンを押させず、見つかった新しいバージョンを即座に適用する。
- * 以前は「更新する」ボタンを押すまで反映されず、それが
- * 「アップロードしても自動で反映されない」問題の原因になっていた。
+ * バナー経由、または「入力中でない」ことを確認した上で、待機中の新しい
+ * Service Workerを適用する。
  */
 function activateNewServiceWorker(reg){
   if (!reg.waiting) return;
   reg.waiting.postMessage({ type: 'SKIP_WAITING' });
 }
 
-
+let pendingUpdateReg = null;
 function showUpdateBanner(reg){
+  pendingUpdateReg = reg;
+  // 投稿フォーム入力中で、かつユーザーがまだ手動更新を選んでいない場合は、
+  // 画面を止めないようバナー表示自体をいったん見送り、入力が終わった
+  // タイミング（closeSheet実行時など）で改めて表示する。
+  if (isUserMidTask()) return;
   if (document.getElementById('updateBanner')) return;
   const el = document.createElement('div');
   el.id = 'updateBanner';
@@ -4081,12 +4101,9 @@ function showUpdateBanner(reg){
   `;
   document.body.appendChild(el);
   document.getElementById('updateBannerBtn').onclick = () => {
-    if (reg.waiting){
-      reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-    } else {
-      window.location.reload();
-    }
+    activateNewServiceWorker(reg);
     el.remove();
+    pendingUpdateReg = null;
   };
 }
 </script>

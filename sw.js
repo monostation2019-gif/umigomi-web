@@ -107,15 +107,40 @@ self.addEventListener('fetch', (event) => {
 
   if (isNavigation || isAppShellAsset) {
     // ネットワーク優先＋HTTPキャッシュを完全にバイパス（cache:'no-store'）
-    // これで「SW的にはネットワーク優先のつもりが、実はブラウザ手元キャッシュを掴んでいた」を防ぐ
+    // これで「SW的にはネットワーク優先のつもりが、実はブラウザ手元キャッシュを掴んでいた」を防ぐ。
+    //
+    // ただし、これだけだと電波の弱い現場（海沿い・山沿いなど）では
+    // ネットワーク応答を待つ間ずっと画面が真っ白のままになってしまう。
+    // そこで「一定時間（NETWORK_TIMEOUT_MS）待っても応答が来なければ、
+    // ネットワークの完了を待たずにひとまずキャッシュ済みの画面を先に出す」
+    // タイムアウト方式に変更した。ネットワーク取得自体は裏で続行し、
+    // 完了すればキャッシュを最新化する（次回以降に反映される）。
+    const NETWORK_TIMEOUT_MS = 3000;
+
+    const networkFetch = fetch(req, { cache: 'no-store' }).then((response) => {
+      const clone = response.clone();
+      cacheNamePromise.then((cacheName) =>
+        caches.open(cacheName).then((cache) => cache.put(req, clone))
+      );
+      return response;
+    });
+
+    const timeoutFallback = new Promise((resolve) => {
+      setTimeout(() => {
+        cacheNamePromise
+          .then((cacheName) => caches.open(cacheName))
+          .then((cache) => cache.match(req).then((cached) => cached || cache.match('./index.html')))
+          .then((cached) => resolve(cached || null));
+      }, NETWORK_TIMEOUT_MS);
+    });
+
     event.respondWith(
-      fetch(req, { cache: 'no-store' })
-        .then((response) => {
-          const clone = response.clone();
-          cacheNamePromise.then((cacheName) =>
-            caches.open(cacheName).then((cache) => cache.put(req, clone))
-          );
-          return response;
+      Promise.race([networkFetch, timeoutFallback])
+        .then((result) => {
+          // タイムアウト側が先に解決したがキャッシュも空だった場合（初回オフライン等）は
+          // 引き続きネットワーク応答を待つしかない
+          if (result) return result;
+          return networkFetch;
         })
         .catch(() =>
           cacheNamePromise
