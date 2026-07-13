@@ -379,37 +379,23 @@
     margin:16px 0 0; line-height:1.6; max-width:320px;
   }
 
-  /* ---------- nickname modal ---------- */
-  #nickname-modal{
+  /* ---------- login loading overlay ---------- */
+  #login-loading{
     position:fixed; inset:0; z-index:2100; display:none;
-    align-items:center; justify-content:center; padding:20px;
+    align-items:center; justify-content:center;
     background: rgba(27,44,60,0.55);
   }
-  .nickname-card{
-    background: var(--white); border-radius:14px; padding:24px 22px;
-    max-width:320px; width:100%; box-shadow:0 10px 40px rgba(0,0,0,0.3);
+  #login-loading .spinner-card{
+    background: var(--white); border-radius:14px; padding:22px 28px;
+    display:flex; align-items:center; gap:12px; color: var(--sumi);
+    font-size:13.5px; box-shadow:0 10px 40px rgba(0,0,0,0.3);
   }
-  .nickname-card h2{
-    font-family:'Shippori Mincho', serif; color: var(--indigo);
-    font-size:17px; margin:0 0 5px; font-weight:700;
+  #login-loading .spinner{
+    width:18px; height:18px; border-radius:50%;
+    border:2.5px solid #ddd; border-top-color: var(--vermillion);
+    animation: login-spin 0.7s linear infinite;
   }
-  .nickname-card .hint{ font-size:11.5px; color:#9a9184; margin-bottom:14px; }
-  .nickname-card input{
-    width:100%; border:1px solid var(--line); border-radius:8px;
-    padding:10px 12px; font-size:14px; font-family:'Zen Kaku Gothic New', sans-serif;
-    background: var(--kinari); color: var(--sumi);
-  }
-  .nickname-error{ color: var(--vermillion-deep); font-size:11.5px; min-height:16px; margin-top:6px; }
-  .nickname-card button.confirm{
-    width:100%; margin-top:12px; padding:12px; border-radius:10px; border:none;
-    background: var(--vermillion); color:#fff; font-size:14.5px; font-weight:500;
-    cursor:pointer; font-family:'Zen Kaku Gothic New', sans-serif;
-  }
-  .nickname-card button.cancel{
-    width:100%; margin-top:8px; padding:10px; border-radius:10px; border:none;
-    background:none; color:#9a9184; font-size:12.5px; cursor:pointer;
-    font-family:'Zen Kaku Gothic New', sans-serif;
-  }
+  @keyframes login-spin{ to{ transform: rotate(360deg); } }
 
   /* ---------- quick action bar (below header: heatmap / ranking) ---------- */
   .quick-actions{
@@ -576,18 +562,14 @@
       </button>
       <button class="login-btn guest" id="login-guest">ゲストとして始める</button>
     </div>
-    <p class="login-note">Google/Appleログインは簡易版です。入力した名前でこの端末にアカウントを作成し、他の人と重ならない専用IDを割り当てます。</p>
+    <p class="login-note">Google/Appleアカウントで安全にログインします。次回からは自動的にログインされます。ニックネームや写真はログイン後にプロフィールから設定できます。</p>
   </div>
 </div>
 
-<div id="nickname-modal">
-  <div class="nickname-card">
-    <h2>ニックネームを入力</h2>
-    <div class="hint">地図に登録したものに表示される名前です</div>
-    <input type="text" id="nickname-input" maxlength="14" placeholder="例: 伊勢太郎">
-    <div class="nickname-error" id="nickname-error"></div>
-    <button class="confirm" id="nickname-confirm">はじめる</button>
-    <button class="cancel" id="nickname-cancel">戻る</button>
+<div id="login-loading">
+  <div class="spinner-card">
+    <div class="spinner"></div>
+    <span>ログイン処理中...</span>
   </div>
 </div>
 
@@ -774,6 +756,106 @@
 <input type="file" accept="image/*" id="avatar-gallery-input" style="display:none">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<script type="module">
+  // ---------------- Firebase Authentication ----------------
+  // v9+ モジュラーSDK: 使う関数だけが読み込まれるので軽量(数千ユーザー規模でも起動が重くならない)
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+  import {
+    getAuth,
+    GoogleAuthProvider,
+    OAuthProvider,
+    signInWithPopup,
+    signInAnonymously,
+    onAuthStateChanged,
+    updateProfile,
+    signOut,
+    setPersistence,
+    browserLocalPersistence
+  } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
+
+  var firebaseConfig = {
+    apiKey: "AIzaSyAPoFjQ4RTIYByTuu35J93kwlLfYBEkpKY",
+    authDomain: "machimikke.firebaseapp.com",
+    projectId: "machimikke",
+    storageBucket: "machimikke.firebasestorage.app",
+    messagingSenderId: "497845237336",
+    appId: "1:497845237336:web:a39e12428d2943fdf43c2d"
+  };
+
+  var app = initializeApp(firebaseConfig);
+  var auth = getAuth(app);
+  setPersistence(auth, browserLocalPersistence).catch(function(e){ console.error('persistence設定エラー', e); });
+
+  var googleProvider = new GoogleAuthProvider();
+  var appleProvider = new OAuthProvider('apple.com');
+
+  function randomGuestName(){
+    return 'ゲスト' + Math.floor(1000 + Math.random() * 9000);
+  }
+
+  function providerKeyFromFirebaseUser(fbUser){
+    var pid = (fbUser.providerData[0] && fbUser.providerData[0].providerId) || '';
+    if(pid.indexOf('google') !== -1) return 'google';
+    if(pid.indexOf('apple') !== -1) return 'apple';
+    return 'guest';
+  }
+
+  function toUserObject(fbUser){
+    return {
+      id: fbUser.uid,
+      name: fbUser.displayName || randomGuestName(),
+      provider: providerKeyFromFirebaseUser(fbUser),
+      icon: fbUser.photoURL || null,
+      createdAt: (fbUser.metadata && fbUser.metadata.creationTime) ? new Date(fbUser.metadata.creationTime).getTime() : Date.now()
+    };
+  }
+
+  async function signInGoogle(){
+    var result = await signInWithPopup(auth, googleProvider);
+    return toUserObject(result.user);
+  }
+
+  async function signInApple(){
+    var result = await signInWithPopup(auth, appleProvider);
+    return toUserObject(result.user);
+  }
+
+  async function signInGuest(){
+    var result = await signInAnonymously(auth);
+    if(!result.user.displayName){
+      await updateProfile(result.user, { displayName: randomGuestName() });
+    }
+    return toUserObject(auth.currentUser);
+  }
+
+  async function signOutUser(){
+    await signOut(auth);
+  }
+
+  // プロフィール編集で名前を変更した際、実アカウント側(Firebase)にも反映する
+  async function updateDisplayName(name){
+    if(!auth.currentUser) return;
+    await updateProfile(auth.currentUser, { displayName: name });
+  }
+
+  onAuthStateChanged(auth, function(fbUser){
+    if(fbUser){
+      if(window.__applyLoggedInUser) window.__applyLoggedInUser(toUserObject(fbUser));
+    }else{
+      if(window.__showLoginScreen) window.__showLoginScreen();
+    }
+  });
+
+  window.AuthAPI = {
+    signInGoogle: signInGoogle,
+    signInApple: signInApple,
+    signInGuest: signInGuest,
+    signOutUser: signOutUser,
+    updateDisplayName: updateDisplayName
+  };
+</script>
+
 <script>
 (function(){
   // ---- 伊勢市 大まかな範囲 ----
@@ -866,7 +948,6 @@
   var draftLatLng = null;
   var selectedCat = null;
   var currentUser = null;
-  var pendingProvider = null;
   var draftPinPhoto = null;
   var gomiRangeCircle = null; // ゴミピンタップ時の5m角の範囲表示用
   var myLocation = null;      // 現在地(GPS)
@@ -875,24 +956,34 @@
   // ---------------- ログイン処理・ピン読み込み(最優先で実行) ----------------
   // これらは他の機能の初期化コードより前に実行することで、後続コードに
   // 不具合が発生してもログイン復元とピン表示だけは必ず動くようにしている。
-  // ユーザーIDは端末ごとに乱数(UUID)で発行するので、他の人のIDと重なることはありません。
+  // ログイン本体はFirebase Authentication(Google/Apple/匿名)で行う。
+  // UIの反映はwindow.__applyLoggedInUser / window.__showLoginScreen 経由で、
+  // ページ上部のtype="module"スクリプト(Firebase Auth)から呼び出される。
   var loginScreen = document.getElementById('login-screen');
-  var nicknameModal = document.getElementById('nickname-modal');
-  var nicknameInput = document.getElementById('nickname-input');
-  var nicknameError = document.getElementById('nickname-error');
+  var loginLoading = document.getElementById('login-loading');
   var userBadge = document.getElementById('user-badge');
   var userBadgeAvatar = document.getElementById('user-badge-avatar');
   var userBadgeName = document.getElementById('user-badge-name');
 
-  function makeUserId(){
-    if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
-    return 'u-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  // 端末ローカルの追加プロフィール(ひとこと・独自アイコン)。
+  // Firebase Authのdisplayname/photoURLには文字数・データ量の制約があるため、
+  // 名前は実アカウント側(Firebase)に、ひとこと/独自アイコンはこの端末側に保存する。
+  var PROFILE_EXTRA_PREFIX = 'profile-extra:';
+
+  async function loadProfileExtra(uid){
+    try{
+      var res = await window.storage.get(PROFILE_EXTRA_PREFIX + uid, false);
+      if(res && res.value) return JSON.parse(res.value);
+    }catch(e){ /* 未設定 */ }
+    return { bio: '', customIcon: null };
   }
 
-  function providerLabel(p){
-    if(p === 'google') return 'Google';
-    if(p === 'apple') return 'Apple';
-    return 'ゲスト';
+  async function saveProfileExtra(uid, extra){
+    try{
+      await window.storage.set(PROFILE_EXTRA_PREFIX + uid, JSON.stringify(extra), false);
+    }catch(e){
+      console.error('プロフィール保存エラー', e);
+    }
   }
 
   function renderAvatarEl(el, user){
@@ -905,93 +996,84 @@
     }
   }
 
-  function applyLoggedInUser(user){
-    currentUser = user;
+  // window.AuthAPI (Firebase Auth)側のonAuthStateChangedから呼ばれる。
+  // fbUser: { id, name, provider, icon, createdAt } (Firebaseの実アカウント情報)
+  async function applyLoggedInUser(fbUser){
+    loginLoading.style.display = 'none';
+    var extra = await loadProfileExtra(fbUser.id);
+    currentUser = {
+      id: fbUser.id,
+      name: fbUser.name,
+      provider: fbUser.provider,
+      icon: extra.customIcon || fbUser.icon,
+      bio: extra.bio || '',
+      createdAt: fbUser.createdAt
+    };
     loginScreen.style.display = 'none';
     userBadge.style.display = 'flex';
-    userBadgeName.textContent = user.name;
-    renderAvatarEl(userBadgeAvatar, user);
+    userBadgeName.textContent = currentUser.name;
+    renderAvatarEl(userBadgeAvatar, currentUser);
   }
 
-  async function saveCurrentUser(){
-    try{
-      await window.storage.set('currentUser', JSON.stringify(currentUser), false); // 個人用(非共有)保存
-    }catch(e){
-      console.error('保存エラー', e);
-    }
-  }
-
-  async function completeLogin(provider, nickname){
-    var user = {
-      id: makeUserId(),
-      name: nickname,
-      provider: provider,
-      icon: null,
-      bio: '',
-      createdAt: Date.now()
-    };
-    currentUser = user;
-    await saveCurrentUser();
-    applyLoggedInUser(user);
-    showToast(providerLabel(provider) + 'でログインしました');
-  }
-
-  function openNicknameModal(provider){
-    pendingProvider = provider;
-    nicknameInput.value = '';
-    nicknameError.textContent = '';
-    nicknameModal.style.display = 'flex';
-    setTimeout(function(){ nicknameInput.focus(); }, 150);
-  }
-
-  function closeNicknameModal(){
-    nicknameModal.style.display = 'none';
-    pendingProvider = null;
-  }
-
-  document.getElementById('login-google').addEventListener('click', function(){
-    openNicknameModal('google');
-  });
-  document.getElementById('login-apple').addEventListener('click', function(){
-    openNicknameModal('apple');
-  });
-  document.getElementById('login-guest').addEventListener('click', function(){
-    var guestName = 'ゲスト' + Math.floor(1000 + Math.random() * 9000);
-    completeLogin('guest', guestName);
-  });
-  document.getElementById('nickname-cancel').addEventListener('click', closeNicknameModal);
-  document.getElementById('nickname-confirm').addEventListener('click', function(){
-    var name = nicknameInput.value.trim();
-    if(!name){
-      nicknameError.textContent = 'ニックネームを入力してください';
-      return;
-    }
-    completeLogin(pendingProvider, name);
-    closeNicknameModal();
-  });
-  nicknameInput.addEventListener('keydown', function(e){
-    if(e.key === 'Enter') document.getElementById('nickname-confirm').click();
-  });
-
-  document.getElementById('btn-logout').addEventListener('click', async function(e){
-    e.stopPropagation();
-    try{ await window.storage.delete('currentUser', false); }catch(e){}
+  function showLoginScreen(){
+    loginLoading.style.display = 'none';
     currentUser = null;
     userBadge.style.display = 'none';
     loginScreen.style.display = 'flex';
     closeProfileSheet();
+  }
+
+  // main scriptはIIFE内なので、type="module"側のFirebase Authコードから
+  // 呼び出せるようwindowに橋渡しする。
+  window.__applyLoggedInUser = applyLoggedInUser;
+  window.__showLoginScreen = showLoginScreen;
+
+  function authErrorMessage(err){
+    var code = err && err.code;
+    if(code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return null; // 自分でポップアップを閉じただけ
+    if(code === 'auth/popup-blocked') return 'ポップアップがブロックされました。ブラウザの設定を確認してください';
+    if(code === 'auth/operation-not-allowed') return 'この方法でのログインは現在準備中です';
+    if(code === 'auth/account-exists-with-different-credential') return 'このメールアドレスは別のログイン方法で登録済みです';
+    if(code === 'auth/network-request-failed') return '通信エラーが発生しました。電波状況を確認してください';
+    return 'ログインに失敗しました。もう一度お試しください';
+  }
+
+  async function runLogin(signInFn){
+    if(!window.AuthAPI){
+      showToast('ログイン機能の読み込み中です。数秒後にもう一度お試しください');
+      return;
+    }
+    loginLoading.style.display = 'flex';
+    try{
+      await signInFn();
+      // 成功時のUI反映はonAuthStateChanged経由のapplyLoggedInUserで行われる
+    }catch(err){
+      console.error(err);
+      loginLoading.style.display = 'none';
+      var msg = authErrorMessage(err);
+      if(msg) showToast(msg);
+    }
+  }
+
+  document.getElementById('login-google').addEventListener('click', function(){
+    runLogin(function(){ return window.AuthAPI.signInGoogle(); });
+  });
+  document.getElementById('login-apple').addEventListener('click', function(){
+    runLogin(function(){ return window.AuthAPI.signInApple(); });
+  });
+  document.getElementById('login-guest').addEventListener('click', function(){
+    runLogin(function(){ return window.AuthAPI.signInGuest(); });
   });
 
-  (async function checkExistingLogin(){
+  document.getElementById('btn-logout').addEventListener('click', async function(e){
+    e.stopPropagation();
     try{
-      var res = await window.storage.get('currentUser', false);
-      if(res && res.value){
-        applyLoggedInUser(JSON.parse(res.value));
-        return;
-      }
-    }catch(e){ /* 未ログイン */ }
-    loginScreen.style.display = 'flex';
-  })();
+      if(window.AuthAPI) await window.AuthAPI.signOutUser();
+    }catch(err){
+      console.error(err);
+    }
+    // 画面切り替えはonAuthStateChanged経由のshowLoginScreen()で行われる
+  });
 
   var CATEGORY_ICON = {
     'ゴミ':        { ch: 'ゴ', color: '#B23A2E' },
@@ -1564,10 +1646,20 @@
       showToast('ニックネームを入力してください');
       return;
     }
+    var nameChanged = name !== currentUser.name;
     currentUser.name = name;
     currentUser.bio = editBio.value.trim();
     currentUser.icon = draftIcon;
-    await saveCurrentUser();
+    try{
+      // 名前は実アカウント(Firebase)側にも反映し、他端末・再ログイン時も引き継がれるようにする
+      if(nameChanged && window.AuthAPI) await window.AuthAPI.updateDisplayName(name);
+      // ひとこと・独自アイコンは端末ローカルに保存(現状Firestore未導入のため端末単位)
+      await saveProfileExtra(currentUser.id, { bio: currentUser.bio, customIcon: currentUser.icon });
+    }catch(err){
+      console.error(err);
+      showToast('プロフィールの保存に失敗しました');
+      return;
+    }
     userBadgeName.textContent = currentUser.name;
     renderAvatarEl(userBadgeAvatar, currentUser);
     showToast('プロフィールを保存しました');
