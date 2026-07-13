@@ -773,6 +773,15 @@
     setPersistence,
     browserLocalPersistence
   } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
+  import {
+    getFirestore,
+    collection,
+    doc,
+    setDoc,
+    getDoc,
+    getDocs,
+    deleteDoc
+  } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
   var firebaseConfig = {
     apiKey: "AIzaSyAPoFjQ4RTIYByTuu35J93kwlLfYBEkpKY",
@@ -785,7 +794,49 @@
 
   var app = initializeApp(firebaseConfig);
   var auth = getAuth(app);
+  var db = getFirestore(app);
   setPersistence(auth, browserLocalPersistence).catch(function(e){ console.error('persistence設定エラー', e); });
+
+  // ---------------- Firestore: ピン(見つけたもの)の永続化 ----------------
+  // window.storageはClaudeのプレビュー環境専用APIで本番(Vercel等)には存在しないため、
+  // 実際に動かすデータはすべてFirestoreに保存する。
+  var PINS_COLLECTION = 'pins';
+  var PROFILES_COLLECTION = 'profiles';
+
+  async function listPins(){
+    var snap = await getDocs(collection(db, PINS_COLLECTION));
+    var arr = [];
+    snap.forEach(function(d){ arr.push(d.data()); });
+    return arr;
+  }
+
+  async function savePinDoc(pin){
+    await setDoc(doc(db, PINS_COLLECTION, pin.id), pin);
+  }
+
+  async function deletePinDoc(id){
+    await deleteDoc(doc(db, PINS_COLLECTION, id));
+  }
+
+  async function loadProfileExtraDoc(uid){
+    var snap = await getDoc(doc(db, PROFILES_COLLECTION, uid));
+    if(snap.exists()) return snap.data();
+    return { bio: '', customIcon: null };
+  }
+
+  async function saveProfileExtraDoc(uid, extra){
+    await setDoc(doc(db, PROFILES_COLLECTION, uid), extra, { merge: true });
+  }
+
+  window.PinsAPI = {
+    list: listPins,
+    save: savePinDoc,
+    remove: deletePinDoc
+  };
+  window.ProfileAPI = {
+    load: loadProfileExtraDoc,
+    save: saveProfileExtraDoc
+  };
 
   var googleProvider = new GoogleAuthProvider();
   var appleProvider = new OAuthProvider('apple.com');
@@ -854,10 +905,21 @@
     signOutUser: signOutUser,
     updateDisplayName: updateDisplayName
   };
+
+  // main script(IIFE)はこのモジュールより先に同期実行され、Firestore/Auth関数を
+  // 呼び出そうとする可能性があるため、準備完了をPromiseで知らせる。
+  if(window.__resolveFirebaseReady) window.__resolveFirebaseReady();
 </script>
 
 <script>
 (function(){
+  // Firebase(Auth/Firestore)はtype="module"側で非同期に初期化される。
+  // このIIFEはそれより先に同期実行されるため、Firestore関連の関数は
+  // 呼び出し時にこのPromiseを待ってから実処理を行う。
+  window.__firebaseReady = new Promise(function(resolve){
+    window.__resolveFirebaseReady = resolve;
+  });
+
   // ---- 伊勢市 大まかな範囲 ----
   var ISE_CENTER = [34.489, 136.709];
   var ISE_BOUNDS = L.latLngBounds([34.34, 136.60], [34.60, 136.86]);
@@ -965,25 +1027,22 @@
   var userBadgeAvatar = document.getElementById('user-badge-avatar');
   var userBadgeName = document.getElementById('user-badge-name');
 
-  // 端末ローカルの追加プロフィール(ひとこと・独自アイコン)。
-  // Firebase Authのdisplayname/photoURLには文字数・データ量の制約があるため、
-  // 名前は実アカウント側(Firebase)に、ひとこと/独自アイコンはこの端末側に保存する。
-  var PROFILE_EXTRA_PREFIX = 'profile-extra:';
-
+  // 端末をまたいで同期できるよう、Firestoreに保存する。
+  // (Firebase Authのdisplayname/photoURLは文字数・データ量の制約があるため、
+  //  名前は実アカウント側(Firebase Auth)に、ひとこと/独自アイコンはFirestoreに保存する)
   async function loadProfileExtra(uid){
     try{
-      var res = await window.storage.get(PROFILE_EXTRA_PREFIX + uid, false);
-      if(res && res.value) return JSON.parse(res.value);
-    }catch(e){ /* 未設定 */ }
-    return { bio: '', customIcon: null };
+      await window.__firebaseReady;
+      return await window.ProfileAPI.load(uid);
+    }catch(e){
+      console.error('プロフィール読み込みエラー', e);
+      return { bio: '', customIcon: null };
+    }
   }
 
   async function saveProfileExtra(uid, extra){
-    try{
-      await window.storage.set(PROFILE_EXTRA_PREFIX + uid, JSON.stringify(extra), false);
-    }catch(e){
-      console.error('プロフィール保存エラー', e);
-    }
+    await window.__firebaseReady;
+    await window.ProfileAPI.save(uid, extra);
   }
 
   function renderAvatarEl(el, user){
@@ -1192,8 +1251,13 @@
 
   window.__deletePin = async function(id){
     try{
-      await window.storage.delete('pin:' + id, true);
-    }catch(e){ /* 既に無い場合等は無視 */ }
+      await window.__firebaseReady;
+      await window.PinsAPI.remove(id);
+    }catch(e){
+      console.error('削除エラー', e);
+      showToast('削除に失敗しました。もう一度お試しください');
+      return;
+    }
     if(markers[id]){
       map.removeLayer(markers[id]);
       delete markers[id];
@@ -1206,24 +1270,18 @@
 
   async function loadPins(){
     try{
-      var listRes = await window.storage.list('pin:', true);
-      if(!listRes || !listRes.keys) return;
-      for(var i=0; i<listRes.keys.length; i++){
-        try{
-          var r = await window.storage.get(listRes.keys[i], true);
-          if(r && r.value){
-            var pin = JSON.parse(r.value);
-            addMarkerToMap(pin);
-          }
-        }catch(e){}
-      }
+      await window.__firebaseReady;
+      var pins = await window.PinsAPI.list();
+      pins.forEach(function(pin){ addMarkerToMap(pin); });
     }catch(e){
       console.error('読み込みエラー', e);
+      showToast('地図データの読み込みに失敗しました');
     }
   }
 
   async function savePin(pin){
-    await window.storage.set('pin:' + pin.id, JSON.stringify(pin), true);
+    await window.__firebaseReady;
+    await window.PinsAPI.save(pin);
   }
 
   // ---- 他ユーザーが登録/編集/削除したピンを定期的に取り込む(簡易リアルタイム同期) ----
@@ -1233,38 +1291,34 @@
     pinSyncInFlight = true;
     var changed = false;
     try{
-      var listRes = await window.storage.list('pin:', true);
-      if(!listRes || !listRes.keys) return;
+      await window.__firebaseReady;
+      var pins = await window.PinsAPI.list();
       var remoteIds = {};
-      for(var i=0; i<listRes.keys.length; i++){
-        try{
-          var r = await window.storage.get(listRes.keys[i], true);
-          if(!r || !r.value) continue;
-          var pin = JSON.parse(r.value);
-          remoteIds[pin.id] = true;
-          var existing = pinStore[pin.id];
-          if(!existing){
-            // 他のユーザーが新しく登録したピン
-            addMarkerToMap(pin);
-            changed = true;
-          }else if(
-            existing.title !== pin.title ||
-            existing.memo !== pin.memo ||
-            existing.category !== pin.category ||
-            existing.machi !== pin.machi ||
-            existing.photo !== pin.photo ||
-            existing.updatedAt !== pin.updatedAt
-          ){
-            // 内容が更新されたピン(自分の編集も含む)
-            pinStore[pin.id] = pin;
-            var mk = markers[pin.id];
-            if(mk){
-              mk.setIcon(hankoIcon(false, pin.category));
-              mk.setPopupContent(popupHtml(pin));
-            }
-            changed = true;
+      for(var i=0; i<pins.length; i++){
+        var pin = pins[i];
+        remoteIds[pin.id] = true;
+        var existing = pinStore[pin.id];
+        if(!existing){
+          // 他のユーザーが新しく登録したピン
+          addMarkerToMap(pin);
+          changed = true;
+        }else if(
+          existing.title !== pin.title ||
+          existing.memo !== pin.memo ||
+          existing.category !== pin.category ||
+          existing.machi !== pin.machi ||
+          existing.photo !== pin.photo ||
+          existing.updatedAt !== pin.updatedAt
+        ){
+          // 内容が更新されたピン(自分の編集も含む)
+          pinStore[pin.id] = pin;
+          var mk = markers[pin.id];
+          if(mk){
+            mk.setIcon(hankoIcon(false, pin.category));
+            mk.setPopupContent(popupHtml(pin));
           }
-        }catch(e){ /* 個別取得の失敗は無視して次のピンへ */ }
+          changed = true;
+        }
       }
       // 他のユーザーが削除したピンをこちらの地図からも消す
       Object.keys(pinStore).forEach(function(id){
