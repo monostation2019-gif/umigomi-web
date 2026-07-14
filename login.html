@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>ログイン - 伊勢まちみっけ</title>
+    <style>
+        body { font-family: 'Zen Kaku Gothic New', sans-serif; background: #F1EBDD; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-box { background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 300px; text-align: center; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #D8CFBB; border-radius: 6px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: #253A50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        #status { margin-top: 10px; font-size: 0.9em; color: #B23A2E; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h2>ログイン</h2>
+        <input type="text" id="user" placeholder="ユーザーID">
+        <input type="password" id="pass" placeholder="パスワード">
+        <button id="login-btn">ログイン</button>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        document.getElementById('login-btn').addEventListener('click', function() {
+            const status = document.getElementById('status');
+            status.textContent = 'ログイン処理中...';
+            
+            // 簡易的なチェック（実際にはサーバーとの通信が入ります）
+            setTimeout(() => {
+                // 成功したら index.html へ移動
+                window.location.href = 'index.html';
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
