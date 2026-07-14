@@ -859,6 +859,7 @@
   //  不安定になる原因になっていた)
   // 必ずsetPersistenceの完了を待ってから監視を始めることでこれを防ぐ。
   var redirectedToLogin = false; // 二重にlocation.replaceしないためのガード
+  var logoutCheckTimer = null;
   (async function(){
     try{
       await setPersistence(auth, browserLocalPersistence);
@@ -869,10 +870,21 @@
     onAuthStateChanged(auth, function(fbUser){
       if(fbUser){
         redirectedToLogin = false;
+        if(logoutCheckTimer){ clearTimeout(logoutCheckTimer); logoutCheckTimer = null; }
         if(window.__applyLoggedInUser) window.__applyLoggedInUser(toUserObject(fbUser));
-      }else if(!redirectedToLogin){
-        redirectedToLogin = true;
-        location.replace('login.html');
+      }else if(!redirectedToLogin && !logoutCheckTimer){
+        // 通信の瞬断やIDトークンの自動更新のタイミングで、実際にはログイン
+        // したままなのに一瞬だけnullが渡ってくることがある。ここで即座に
+        // login.htmlへ移動すると、投稿作業中などに「急に初期画面へ戻る」
+        // 不具合の原因になる。少し待って本当にログアウトしているか
+        // (auth.currentUserで)再確認してから移動することでこれを防ぐ。
+        logoutCheckTimer = setTimeout(function(){
+          logoutCheckTimer = null;
+          if(!auth.currentUser && !redirectedToLogin){
+            redirectedToLogin = true;
+            location.replace('login.html');
+          }
+        }, 2500);
       }
     });
 
@@ -959,6 +971,17 @@
   // window.AuthAPI (Firebase Auth)側のonAuthStateChangedから呼ばれる。
   // fbUser: { id, name, provider, icon, createdAt } (Firebaseの実アカウント情報)
   async function applyLoggedInUser(fbUser){
+    // トークン自動更新などでonAuthStateChangedは同じユーザーのまま何度も
+    // 再発火することがある。その都度bio/独自アイコンを初期値に戻してから
+    // 読み直すと、せっかく設定したプロフィール画像が一瞬"元に戻る"ように
+    // 見えてしまう。既に同じユーザーとして表示済みなら、名前以外は
+    // 上書きせずそのまま維持する。
+    if(currentUser && currentUser.id === fbUser.id){
+      currentUser.name = fbUser.name;
+      userBadgeName.textContent = currentUser.name;
+      return;
+    }
+
     // まずFirebase Authだけで分かる情報で即座に画面を出す。
     // bio/独自アイコン(Firestore)の読み込みを待って白い画面を長引かせない。
     currentUser = {
