@@ -1669,6 +1669,8 @@
       existing.photo = draftPinPhoto;
       existing.hasPhoto = !!draftPinPhoto;
       existing.updatedAt = Date.now();
+      // ★重要: 保存が確定するまでは同期処理から保護する(新規登録と同じ理由)
+      existing.syncPending = true;
 
       // 通信を待たず、先に画面を更新する(楽観的UI)。保存はバックグラウンドで行う。
       pinStore[existing.id] = existing;
@@ -1684,9 +1686,11 @@
       // 電波が悪くてすぐに保存できなくても、入力内容は消さない。
       // 数回自動で再送し、それでもダメなら「保留」として残し、
       // 次の自動同期(retryPendingSyncs)やオンライン復帰時に再送を続ける。
-      retryAsync(function(){ return savePin(existing); }, 3).catch(function(e){
+      retryAsync(function(){ return savePin(existing); }, 3).then(function(){
+        markPinSynced(existing);
+      }).catch(function(e){
         console.error(e);
-        markPinSyncPending(existing);
+        // 既にsyncPending=trueなので保留のまま維持される(編集内容は消えない)
         showToast('電波が不安定なため保存待ちです。回復し次第、自動的に送信します');
       });
       return;
@@ -1709,6 +1713,12 @@
     };
 
     // 通信を待たず、先に画面を更新する(楽観的UI)。保存はバックグラウンドで行う。
+    // ★重要: 保存が完了する前(通信中)にバックグラウンド同期(45秒ごと)が
+    // 走ると、サーバーにまだこのピンが存在しないため「他ユーザーが削除した
+    // ピン」と誤認して消してしまうことがあった。これが「登録したのに
+    // 反映されない/消える」不具合の原因。保存が確定するまでは必ず
+    // syncPending=trueにして、同期処理からこのピンを保護する。
+    pin.syncPending = true;
     if(draftMarker){ map.removeLayer(draftMarker); draftMarker = null; }
     addMarkerToMap(pin);
     showToast('登録しました');
@@ -1718,9 +1728,11 @@
     // 電波が悪くてすぐに保存できなくても、せっかく入力した内容を消さない。
     // 数回自動で再送し、それでもダメなら「保留」として地図には残しておき、
     // 次の自動同期(retryPendingSyncs)やオンライン復帰時に再送を続ける。
-    retryAsync(function(){ return savePin(pin); }, 3).catch(function(e){
+    retryAsync(function(){ return savePin(pin); }, 3).then(function(){
+      markPinSynced(pin);
+    }).catch(function(e){
       console.error(e);
-      markPinSyncPending(pin);
+      // 既にsyncPending=trueなので保留のまま維持される(データは消えない)
       showToast('電波が不安定なため保存待ちです。回復し次第、自動的に送信します');
     });
   });
