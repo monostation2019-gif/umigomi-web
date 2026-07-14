@@ -924,19 +924,32 @@
   // window.AuthAPI (Firebase Auth)側のonAuthStateChangedから呼ばれる。
   // fbUser: { id, name, provider, icon, createdAt } (Firebaseの実アカウント情報)
   async function applyLoggedInUser(fbUser){
-    var extra = await loadProfileExtra(fbUser.id);
+    // まずFirebase Authだけで分かる情報で即座に画面を出す。
+    // bio/独自アイコン(Firestore)の読み込みを待って白い画面を長引かせない。
     currentUser = {
       id: fbUser.id,
       name: fbUser.name,
       provider: fbUser.provider,
-      icon: extra.customIcon || fbUser.icon,
-      bio: extra.bio || '',
+      icon: fbUser.icon,
+      bio: '',
       createdAt: fbUser.createdAt
     };
     sessionCheck.style.display = 'none';
     userBadge.style.display = 'flex';
     userBadgeName.textContent = currentUser.name;
     renderAvatarEl(userBadgeAvatar, currentUser);
+
+    // bio・独自アイコンなどの付加情報はバックグラウンドで取得し、届き次第反映する
+    try{
+      var extra = await loadProfileExtra(fbUser.id);
+      if(currentUser && currentUser.id === fbUser.id){
+        currentUser.icon = extra.customIcon || fbUser.icon;
+        currentUser.bio = extra.bio || '';
+        renderAvatarEl(userBadgeAvatar, currentUser);
+      }
+    }catch(e){
+      console.error('プロフィール付加情報の取得に失敗しました', e);
+    }
   }
   window.__applyLoggedInUser = applyLoggedInUser;
 
@@ -1037,6 +1050,10 @@
   // ---- state ----
   var markers = {};       // id -> L.marker
   var pinStore = {};      // id -> pin data (生データ、ヒートマップ/ランキング集計用)
+
+  // Firestoreの応答を待たず、前回表示していたピンを即座に地図へ描画する。
+  // (この後のloadPins()でサーバーの最新データに置き換わる)
+  loadPinsFromCache();
   var draftMarker = null;
   var draftLatLng = null;
   var selectedCat = null;
@@ -1171,6 +1188,12 @@
   }
 
   function addMarkerToMap(pin){
+    // キャッシュ由来のマーカーとサーバー取得後のマーカーが重複しないよう、
+    // 同じidが既にあれば一旦消してから作り直す
+    if(markers[pin.id]){
+      map.removeLayer(markers[pin.id]);
+      delete markers[pin.id];
+    }
     var m = L.marker([pin.lat, pin.lng], { icon: hankoIcon(false, pin.category) }).addTo(map);
     m.bindPopup(popupHtml(pin));
     m.on('popupopen', function(){
@@ -1206,14 +1229,60 @@
     delete pinStore[id];
     hideGomiRangeCircle();
     updateCount();
+    savePinsToCache();
     showToast('削除しました');
   };
+
+  // ---- ピンのローカルキャッシュ(localStorage) ----
+  // Firestoreからの取得を待たずに、前回表示していたピンを即座に地図へ出すための
+  // 簡易キャッシュ。写真(base64)はサイズが大きいので保存しない。
+  var PINS_CACHE_KEY = 'mm_pins_cache_v1';
+
+  function loadPinsFromCache(){
+    try{
+      var raw = localStorage.getItem(PINS_CACHE_KEY);
+      if(!raw) return;
+      var cached = JSON.parse(raw);
+      if(!Array.isArray(cached)) return;
+      cached.forEach(function(pin){ addMarkerToMap(pin); });
+      updateCount();
+    }catch(e){
+      console.error('ピンキャッシュの読み込みに失敗しました', e);
+    }
+  }
+
+  function savePinsToCache(){
+    try{
+      var arr = Object.keys(pinStore).map(function(id){
+        var p = pinStore[id];
+        var copy = {};
+        for(var k in p){ if(k !== 'photo') copy[k] = p[k]; }
+        return copy;
+      });
+      localStorage.setItem(PINS_CACHE_KEY, JSON.stringify(arr));
+    }catch(e){
+      // 容量オーバー等が起きても致命的ではないので無視する
+    }
+  }
 
   async function loadPins(){
     try{
       await window.__firebaseReady;
       var pins = await window.PinsAPI.list();
-      pins.forEach(function(pin){ addMarkerToMap(pin); });
+      var remoteIds = {};
+      pins.forEach(function(pin){
+        remoteIds[pin.id] = true;
+        addMarkerToMap(pin); // キャッシュ由来の同idマーカーは自動的に置き換わる
+      });
+      // キャッシュにはあったがサーバー側で既に削除されているピンを除去
+      Object.keys(pinStore).forEach(function(id){
+        if(!remoteIds[id]){
+          if(markers[id]){ map.removeLayer(markers[id]); delete markers[id]; }
+          delete pinStore[id];
+        }
+      });
+      updateCount();
+      savePinsToCache();
     }catch(e){
       console.error('読み込みエラー', e);
       showToast('地図データの読み込みに失敗しました');
@@ -1279,6 +1348,7 @@
     }
     if(changed){
       updateCount();
+      savePinsToCache();
       if(document.getElementById('ranking-panel').classList.contains('open')) renderRanking();
       if(document.getElementById('heatmap-panel').classList.contains('open')) renderHeatmap();
     }
@@ -1471,6 +1541,7 @@
         }
         showToast('更新しました');
         closeSheet();
+        savePinsToCache();
       }catch(e){
         console.error(e);
         showToast('更新に失敗しました。もう一度お試しください');
@@ -1489,6 +1560,7 @@
       photo: draftPinPhoto,
       hasPhoto: !!draftPinPhoto,
       createdAt: Date.now(),
+      updatedAt: Date.now(),
       createdBy: currentUser ? currentUser.name : '匿名',
       createdById: currentUser ? currentUser.id : null
     };
@@ -1498,6 +1570,7 @@
       addMarkerToMap(pin);
       showToast('登録しました');
       closeSheet();
+      savePinsToCache();
     }catch(e){
       console.error(e);
       showToast('保存に失敗しました。もう一度お試しください');
@@ -1514,7 +1587,7 @@
   }
 
   loadPins();
-  setInterval(syncPinsFromStorage, 20000); // 20秒ごとに他ユーザーの登録/編集/削除を反映
+  setInterval(syncPinsFromStorage, 45000); // 45秒ごとに他ユーザーの登録/編集/削除を反映(頻度を下げて負荷軽減)
   document.addEventListener('visibilitychange', function(){
     if(document.visibilityState === 'visible') syncPinsFromStorage();
   });
@@ -1875,6 +1948,58 @@
       renderRanking();
     });
   });
+})();
+</script>
+
+<script>
+(function(){
+  // ---- Service Worker登録(安全設計: 自動リロードしない) ----
+  if(!('serviceWorker' in navigator)) return;
+
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('./sw.js').then(function(reg){
+      reg.addEventListener('updatefound', function(){
+        var newWorker = reg.installing;
+        if(!newWorker) return;
+        newWorker.addEventListener('statechange', function(){
+          // controllerが既にいる(=初回インストールではなく更新)時だけバナーを出す
+          if(newWorker.state === 'installed' && navigator.serviceWorker.controller){
+            showSwUpdateBanner(newWorker);
+          }
+        });
+      });
+    }).catch(function(e){
+      console.error('Service Worker登録に失敗しました', e);
+    });
+  });
+
+  // 新しいSWが有効化された時に1回だけリロードする(多重発火防止のガード付き)
+  var swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function(){
+    if(swRefreshing) return;
+    swRefreshing = true;
+    location.reload();
+  });
+
+  function showSwUpdateBanner(worker){
+    if(document.getElementById('sw-update-banner')) return;
+    var banner = document.createElement('div');
+    banner.id = 'sw-update-banner';
+    banner.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:3000;'+
+      'background:var(--indigo, #253A50);color:#fff;border-radius:12px;'+
+      'box-shadow:0 6px 20px rgba(0,0,0,0.25);padding:12px 14px;'+
+      'display:flex;align-items:center;justify-content:space-between;gap:10px;'+
+      'font-family:"Zen Kaku Gothic New",sans-serif;font-size:13px;';
+    banner.innerHTML = '<span>新しいバージョンがあります</span>'+
+      '<button id="sw-update-btn" style="background:var(--vermillion,#B23A2E);color:#fff;'+
+      'border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:500;'+
+      'font-family:inherit;cursor:pointer;white-space:nowrap;">今すぐ更新</button>';
+    document.body.appendChild(banner);
+    document.getElementById('sw-update-btn').addEventListener('click', function(){
+      worker.postMessage('SKIP_WAITING');
+      banner.remove();
+    });
+  }
 })();
 </script>
 </body>
