@@ -1213,24 +1213,30 @@
     updateCount();
   }
 
-  window.__deletePin = async function(id){
-    try{
-      await window.__firebaseReady;
-      await window.PinsAPI.remove(id);
-    }catch(e){
-      console.error('削除エラー', e);
-      showToast('削除に失敗しました。もう一度お試しください');
-      return;
-    }
-    if(markers[id]){
-      map.removeLayer(markers[id]);
-      delete markers[id];
-    }
+  window.__deletePin = function(id){
+    var pinBackup = pinStore[id];
+    if(!pinBackup) return;
+
+    // 通信を待たず、先に画面から消す(楽観的UI)。削除はバックグラウンドで行う。
+    if(markers[id]){ map.removeLayer(markers[id]); delete markers[id]; }
     delete pinStore[id];
     hideGomiRangeCircle();
     updateCount();
     savePinsToCache();
     showToast('削除しました');
+
+    (async function(){
+      try{
+        await window.__firebaseReady;
+        await window.PinsAPI.remove(id);
+      }catch(e){
+        console.error('削除エラー', e);
+        // 削除に失敗したら元に戻す
+        addMarkerToMap(pinBackup);
+        savePinsToCache();
+        showToast('削除に失敗しました。もう一度お試しください');
+      }
+    })();
   };
 
   // ---- ピンのローカルキャッシュ(localStorage) ----
@@ -1510,7 +1516,7 @@
     photoPreviewWrap.style.display = 'none';
   });
 
-  document.getElementById('btn-save').addEventListener('click', async function(){
+  document.getElementById('btn-save').addEventListener('click', function(){
     var title = document.getElementById('f-title').value.trim();
     if(!title){
       showToast('タイトルを入力してください');
@@ -1525,27 +1531,47 @@
         closeSheet();
         return;
       }
+      // 通信に失敗した時に元へ戻せるよう、変更前の状態を保存しておく
+      var prevSnapshot = {
+        title: existing.title,
+        memo: existing.memo,
+        category: existing.category,
+        photo: existing.photo,
+        hasPhoto: existing.hasPhoto,
+        updatedAt: existing.updatedAt
+      };
+
       existing.title = title;
       existing.memo = document.getElementById('f-memo').value.trim();
       existing.category = selectedCat;
       existing.photo = draftPinPhoto;
       existing.hasPhoto = !!draftPinPhoto;
       existing.updatedAt = Date.now();
-      try{
-        await savePin(existing);
-        pinStore[existing.id] = existing;
-        var mk = markers[existing.id];
-        if(mk){
-          mk.setIcon(hankoIcon(false, existing.category));
-          mk.setPopupContent(popupHtml(existing));
-        }
-        showToast('更新しました');
-        closeSheet();
-        savePinsToCache();
-      }catch(e){
-        console.error(e);
-        showToast('更新に失敗しました。もう一度お試しください');
+
+      // 通信を待たず、先に画面を更新する(楽観的UI)。保存はバックグラウンドで行う。
+      pinStore[existing.id] = existing;
+      var mk = markers[existing.id];
+      if(mk){
+        mk.setIcon(hankoIcon(false, existing.category));
+        mk.setPopupContent(popupHtml(existing));
       }
+      showToast('更新しました');
+      closeSheet();
+      savePinsToCache();
+
+      savePin(existing).catch(function(e){
+        console.error(e);
+        // 保存に失敗したら変更前の状態に戻す
+        for(var k in prevSnapshot){ existing[k] = prevSnapshot[k]; }
+        pinStore[existing.id] = existing;
+        var mk2 = markers[existing.id];
+        if(mk2){
+          mk2.setIcon(hankoIcon(false, existing.category));
+          mk2.setPopupContent(popupHtml(existing));
+        }
+        savePinsToCache();
+        showToast('更新に失敗しました。もう一度お試しください');
+      });
       return;
     }
 
@@ -1564,17 +1590,23 @@
       createdBy: currentUser ? currentUser.name : '匿名',
       createdById: currentUser ? currentUser.id : null
     };
-    try{
-      await savePin(pin);
-      if(draftMarker){ map.removeLayer(draftMarker); draftMarker = null; }
-      addMarkerToMap(pin);
-      showToast('登録しました');
-      closeSheet();
-      savePinsToCache();
-    }catch(e){
+
+    // 通信を待たず、先に画面を更新する(楽観的UI)。保存はバックグラウンドで行う。
+    if(draftMarker){ map.removeLayer(draftMarker); draftMarker = null; }
+    addMarkerToMap(pin);
+    showToast('登録しました');
+    closeSheet();
+    savePinsToCache();
+
+    savePin(pin).catch(function(e){
       console.error(e);
+      // 保存に失敗したら追加したマーカーを取り消す
+      if(markers[pin.id]){ map.removeLayer(markers[pin.id]); delete markers[pin.id]; }
+      delete pinStore[pin.id];
+      updateCount();
+      savePinsToCache();
       showToast('保存に失敗しました。もう一度お試しください');
-    }
+    });
   });
 
   var toastTimer = null;
@@ -1706,30 +1738,41 @@
     showToast('元の写真に戻しました');
   });
 
-  document.getElementById('profile-save').addEventListener('click', async function(){
+  document.getElementById('profile-save').addEventListener('click', function(){
     var name = editNickname.value.trim();
     if(!name){
       showToast('ニックネームを入力してください');
       return;
     }
+    var prevSnapshot = { name: currentUser.name, bio: currentUser.bio, icon: currentUser.icon };
     var nameChanged = name !== currentUser.name;
     currentUser.name = name;
     currentUser.bio = editBio.value.trim();
     currentUser.icon = draftIcon;
-    try{
-      // 名前は実アカウント(Firebase)側にも反映し、他端末・再ログイン時も引き継がれるようにする
-      if(nameChanged && window.AuthAPI) await window.AuthAPI.updateDisplayName(name);
-      // ひとこと・独自アイコンは端末ローカルに保存(現状Firestore未導入のため端末単位)
-      await saveProfileExtra(currentUser.id, { bio: currentUser.bio, customIcon: currentUser.icon });
-    }catch(err){
-      console.error(err);
-      showToast('プロフィールの保存に失敗しました');
-      return;
-    }
+
+    // 通信を待たず、先に画面を更新する(楽観的UI)。保存はバックグラウンドで行う。
     userBadgeName.textContent = currentUser.name;
     renderAvatarEl(userBadgeAvatar, currentUser);
     showToast('プロフィールを保存しました');
     showProfileView();
+
+    (async function(){
+      try{
+        // 名前は実アカウント(Firebase)側にも反映し、他端末・再ログイン時も引き継がれるようにする
+        if(nameChanged && window.AuthAPI) await window.AuthAPI.updateDisplayName(name);
+        // ひとこと・独自アイコンは端末ローカルに保存(現状Firestore未導入のため端末単位)
+        await saveProfileExtra(currentUser.id, { bio: currentUser.bio, customIcon: currentUser.icon });
+      }catch(err){
+        console.error(err);
+        // 保存に失敗したら変更前の状態に戻す
+        currentUser.name = prevSnapshot.name;
+        currentUser.bio = prevSnapshot.bio;
+        currentUser.icon = prevSnapshot.icon;
+        userBadgeName.textContent = currentUser.name;
+        renderAvatarEl(userBadgeAvatar, currentUser);
+        showToast('プロフィールの保存に失敗しました。もう一度お試しください');
+      }
+    })();
   });
 
   // ================================================================
