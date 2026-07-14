@@ -166,7 +166,6 @@
 
   var app = initializeApp(firebaseConfig);
   var auth = getAuth(app);
-  setPersistence(auth, browserLocalPersistence).catch(function(e){ console.error('persistence設定エラー', e); });
 
   var googleProvider = new GoogleAuthProvider();
   var appleProvider = new OAuthProvider('apple.com');
@@ -191,16 +190,30 @@
     signInGuest: signInGuest
   };
 
+  // ---------------- 認証状態の監視(persistence設定完了後に開始) ----------------
+  // setPersistence()の完了を待たずにonAuthStateChangedを登録すると、
+  // 「まだ永続化の設定が終わっていない一瞬」に本当はログイン済みなのに
+  // 未ログイン(null)として扱われてログイン画面が一瞬表示され、その直後に
+  // 本来の状態が確定してindex.htmlへ戻る、という不安定な挙動(白い画面の
+  // ちらつきや行ったり来たり)の原因になっていた。
   // 既にログイン済み(前回ログインした端末で再訪問した場合など)なら、
   // ログイン画面を出さず即座にホーム画面へ移動する。
   // ログインボタンでログインに成功した場合もここが呼ばれてホームへ移動する。
-  onAuthStateChanged(auth, function(fbUser){
-    if(fbUser){
-      location.replace('index.html');
-    }else{
-      if(window.__showLoginScreen) window.__showLoginScreen();
+  (async function(){
+    try{
+      await setPersistence(auth, browserLocalPersistence);
+    }catch(e){
+      console.error('persistence設定エラー', e);
     }
-  });
+
+    onAuthStateChanged(auth, function(fbUser){
+      if(fbUser){
+        location.replace('index.html');
+      }else{
+        if(window.__showLoginScreen) window.__showLoginScreen();
+      }
+    });
+  })();
 </script>
 
 <script>

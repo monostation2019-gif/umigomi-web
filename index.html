@@ -747,7 +747,6 @@
   var app = initializeApp(firebaseConfig);
   var auth = getAuth(app);
   var db = getFirestore(app);
-  setPersistence(auth, browserLocalPersistence).catch(function(e){ console.error('persistence設定エラー', e); });
 
   // ---------------- Firestore: ピン(見つけたもの)の永続化 ----------------
   var PINS_COLLECTION = 'reports';
@@ -846,23 +845,41 @@
     await updateProfile(auth.currentUser, { displayName: name });
   }
 
-  // 未ログインならlogin.htmlへ移動する(ログイン画面自体はそちらにしかない)。
-  onAuthStateChanged(auth, function(fbUser){
-    if(fbUser){
-      if(window.__applyLoggedInUser) window.__applyLoggedInUser(toUserObject(fbUser));
-    }else{
-      location.replace('login.html');
-    }
-  });
-
   window.AuthAPI = {
     signOutUser: signOutUser,
     updateDisplayName: updateDisplayName
   };
 
-  // main script(IIFE)はこのモジュールより先に同期実行され、Firestore/Auth関数を
-  // 呼び出そうとする可能性があるため、準備完了をPromiseで知らせる。
-  if(window.__resolveFirebaseReady) window.__resolveFirebaseReady();
+  // ---------------- 認証状態の監視(persistence設定完了後に開始) ----------------
+  // setPersistence()の完了を待たずにonAuthStateChangedを登録すると、
+  // 「まだ永続化の設定が終わっていない一瞬」に本当はログイン済みなのに
+  // 未ログイン(null)として扱われ、login.htmlへ強制移動→実際はログイン済み
+  // なのですぐindex.htmlへ戻る、という不安定な行ったり来たりが発生する。
+  // (PWAを開き直す・タブ復帰する等のたびに再現しうるため、使うたびに
+  //  不安定になる原因になっていた)
+  // 必ずsetPersistenceの完了を待ってから監視を始めることでこれを防ぐ。
+  var redirectedToLogin = false; // 二重にlocation.replaceしないためのガード
+  (async function(){
+    try{
+      await setPersistence(auth, browserLocalPersistence);
+    }catch(e){
+      console.error('persistence設定エラー', e);
+    }
+
+    onAuthStateChanged(auth, function(fbUser){
+      if(fbUser){
+        redirectedToLogin = false;
+        if(window.__applyLoggedInUser) window.__applyLoggedInUser(toUserObject(fbUser));
+      }else if(!redirectedToLogin){
+        redirectedToLogin = true;
+        location.replace('login.html');
+      }
+    });
+
+    // main script(IIFE)はこのモジュールより先に同期実行され、Firestore/Auth関数を
+    // 呼び出そうとする可能性があるため、準備完了をPromiseで知らせる。
+    if(window.__resolveFirebaseReady) window.__resolveFirebaseReady();
+  })();
 </script>
 
 <script>
