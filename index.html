@@ -1584,6 +1584,15 @@
     return name.replace(/[0-9０-９一二三四五六七八九十]+丁目$/, '').trim();
   }
 
+  // 伊勢市の全国地方公共団体コード。地図の表示範囲(ISE_BOUNDS)は少し余白(pad)を
+  // 持たせているため、伊勢市境界のすぐ外側(鳥羽市・志摩市・松阪市・玉城町・
+  // 度会町など)をタップ/GPS取得することもあり得る。「本町」「中之町」「宮町」
+  // 「岡本」など、隣接市町にも同じ町名が存在することがあるため、町名の文字列
+  // だけで照合すると、伊勢市とは全く違う市町の同名の町にマッチしてしまい、
+  // 「タップした場所と全然違う住所がランキングに出る」原因になっていた。
+  // 必ずmuniCd(市区町村コード)が伊勢市のものであることを確認してから使う。
+  var ISE_MUNI_CD = '24203';
+
   async function reverseGeocodeTown(lat, lng){
     try{
       var url = 'https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=' + lat + '&lon=' + lng;
@@ -1591,6 +1600,9 @@
       if(!res || !res.ok) return null;
       var data = await res.json();
       if(data && data.results && data.results.lv01Nm){
+        // 市区町村コードが伊勢市以外なら、たとえ町名の文字列が一致しても
+        // 誤判定なので使わない(nullを返し、呼び出し側の「判定できず」扱いにする)。
+        if(data.results.muniCd && String(data.results.muniCd) !== ISE_MUNI_CD) return null;
         return data.results.lv01Nm;
       }
     }catch(e){ /* 通信エラー・ブロック時は自動判定なしにフォールバック */ }
@@ -1744,8 +1756,21 @@
       // ★重要: 保存が確定するまでは同期処理から保護する(新規登録と同じ理由)
       existing.syncPending = true;
 
-      // 通信を待たず、先に画面を更新する(楽観的UI)。保存はバックグラウンドで行う。
+      // ★重要: モバイルSafariは写真付きマーカーの描画中などにタブごと
+      // クラッシュ/再読み込みされることがある。先にlocalStorageキャッシュへ
+      // 書き込み、Firestoreへの送信も先に開始しておくことで、直後に描画で
+      // 落ちても「登録/更新した内容そのものが失われる」ことがないようにする。
       pinStore[existing.id] = existing;
+      savePinsToCache();
+      retryAsync(function(){ return savePin(existing); }, 5, 1200).then(function(){
+        markPinSynced(existing);
+      }).catch(function(e){
+        console.error(e);
+        // 既にsyncPending=trueなので保留のまま維持される(編集内容は消えない)
+        showToast('電波が不安定なため保存待ちです。回復し次第、自動的に送信します');
+      });
+
+      // 通信を待たず、先に画面を更新する(楽観的UI)。
       var mk = markers[existing.id];
       if(mk){
         mk.setIcon(hankoIcon(false, existing.category));
@@ -1753,18 +1778,6 @@
       }
       showToast('更新しました');
       closeSheet();
-      savePinsToCache();
-
-      // 電波が悪くてすぐに保存できなくても、入力内容は消さない。
-      // 数回自動で再送し、それでもダメなら「保留」として残し、
-      // 次の自動同期(retryPendingSyncs)やオンライン復帰時に再送を続ける。
-      retryAsync(function(){ return savePin(existing); }, 3).then(function(){
-        markPinSynced(existing);
-      }).catch(function(e){
-        console.error(e);
-        // 既にsyncPending=trueなので保留のまま維持される(編集内容は消えない)
-        showToast('電波が不安定なため保存待ちです。回復し次第、自動的に送信します');
-      });
       return;
     }
 
@@ -1784,29 +1797,33 @@
       createdById: currentUser ? currentUser.id : null
     };
 
-    // 通信を待たず、先に画面を更新する(楽観的UI)。保存はバックグラウンドで行う。
     // ★重要: 保存が完了する前(通信中)にバックグラウンド同期(45秒ごと)が
     // 走ると、サーバーにまだこのピンが存在しないため「他ユーザーが削除した
     // ピン」と誤認して消してしまうことがあった。これが「登録したのに
-    // 反映されない/消える」不具合の原因。保存が確定するまでは必ず
+    // 反映されない/消える」不具合の原因の一つ。保存が確定するまでは必ず
     // syncPending=trueにして、同期処理からこのピンを保護する。
     pin.syncPending = true;
-    if(draftMarker){ map.removeLayer(draftMarker); draftMarker = null; }
-    addMarkerToMap(pin);
-    showToast('登録しました');
-    closeSheet();
-    savePinsToCache();
 
-    // 電波が悪くてすぐに保存できなくても、せっかく入力した内容を消さない。
-    // 数回自動で再送し、それでもダメなら「保留」として地図には残しておき、
-    // 次の自動同期(retryPendingSyncs)やオンライン復帰時に再送を続ける。
-    retryAsync(function(){ return savePin(pin); }, 3).then(function(){
+    // ★重要: モバイルSafariは写真付きマーカー/ポップアップの描画中などに
+    // タブごとクラッシュ/再読み込みされることがある。マーカーを作る前に
+    // 先にlocalStorageキャッシュへ書き込み、Firestoreへの送信も先に開始
+    // しておくことで、直後の描画でタブが落ちても「登録した内容そのものが
+    // 消えてしまう(次回開いた時に反映されていない)」ことがないようにする。
+    pinStore[pin.id] = pin;
+    savePinsToCache();
+    retryAsync(function(){ return savePin(pin); }, 5, 1200).then(function(){
       markPinSynced(pin);
     }).catch(function(e){
       console.error(e);
       // 既にsyncPending=trueなので保留のまま維持される(データは消えない)
       showToast('電波が不安定なため保存待ちです。回復し次第、自動的に送信します');
     });
+
+    // 通信を待たず、先に画面を更新する(楽観的UI)。
+    if(draftMarker){ map.removeLayer(draftMarker); draftMarker = null; }
+    addMarkerToMap(pin);
+    showToast('登録しました');
+    closeSheet();
   });
 
   var toastTimer = null;
