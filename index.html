@@ -1361,33 +1361,70 @@
     }
   }
 
+  // 初回読み込みは電波の瞬断(モバイルSafariで特に起きやすい)で失敗しやすい。
+  // 1回失敗しただけで「読み込みに失敗しました」と出し続けると、ユーザーは
+  // 直すためにページを再読み込みし、結果としてログインし直しや入力し直しを
+  // 強いられる体験になってしまう。そこでここだけ自動リトライを持たせ、
+  // 失敗してもキャッシュ由来のピンはそのまま残し、バックグラウンドで
+  // 自動的に再取得を試み続ける(ユーザー操作を要求しない)。
+  var loadPinsRetryTimer = null;
+  var loadPinsFailCount = 0;
+
+  async function loadPinsOnce(){
+    await window.__firebaseReady;
+    // 前回の訪問時に保存が完了しないまま終わっていたピンがあれば、先に再送する
+    await retryPendingSyncs();
+    var pins = await window.PinsAPI.list();
+    var remoteIds = {};
+    pins.forEach(function(pin){
+      remoteIds[pin.id] = true;
+      addMarkerToMap(pin); // キャッシュ由来の同idマーカーは自動的に置き換わる
+    });
+    // キャッシュにはあったがサーバー側で既に削除されているピンを除去。
+    // ただし、まだ保存が完了していない(syncPending)ピンは、サーバーに
+    // 存在しないのが正常な状態なので誤って消さないようにする。
+    Object.keys(pinStore).forEach(function(id){
+      if(!remoteIds[id] && !pinStore[id].syncPending){
+        if(markers[id]){ map.removeLayer(markers[id]); delete markers[id]; }
+        delete pinStore[id];
+      }
+    });
+    updateCount();
+    savePinsToCache();
+  }
+
   async function loadPins(){
+    if(loadPinsRetryTimer){ clearTimeout(loadPinsRetryTimer); loadPinsRetryTimer = null; }
     try{
-      await window.__firebaseReady;
-      // 前回の訪問時に保存が完了しないまま終わっていたピンがあれば、先に再送する
-      await retryPendingSyncs();
-      var pins = await window.PinsAPI.list();
-      var remoteIds = {};
-      pins.forEach(function(pin){
-        remoteIds[pin.id] = true;
-        addMarkerToMap(pin); // キャッシュ由来の同idマーカーは自動的に置き換わる
-      });
-      // キャッシュにはあったがサーバー側で既に削除されているピンを除去。
-      // ただし、まだ保存が完了していない(syncPending)ピンは、サーバーに
-      // 存在しないのが正常な状態なので誤って消さないようにする。
-      Object.keys(pinStore).forEach(function(id){
-        if(!remoteIds[id] && !pinStore[id].syncPending){
-          if(markers[id]){ map.removeLayer(markers[id]); delete markers[id]; }
-          delete pinStore[id];
-        }
-      });
-      updateCount();
-      savePinsToCache();
+      // withTimeoutで使っているのと同じ考え方で、firebaseReadyや通信が
+      // 極端に長時間固まった場合でも「読み込み中のまま固まる」ことがない
+      // よう、1回の試行につき上限15秒で打ち切って次のリトライに回す。
+      await retryAsync(function(){
+        return withTimeout(loadPinsOnce(), 15000).then(function(res){
+          if(res === null) throw new Error('loadPins timeout');
+        });
+      }, 3, 1500);
+      loadPinsFailCount = 0;
     }catch(e){
       console.error('読み込みエラー', e);
-      showToast('地図データの読み込みに失敗しました');
+      loadPinsFailCount++;
+      // 3回(初回+リトライ2回)失敗した直後だけ通知する。ただし地図自体は
+      // キャッシュ由来のピンを表示したままにしておき、登録作業などを
+      // やり直させることはしない。裏側では諦めずに再試行し続ける。
+      if(loadPinsFailCount === 1){
+        showToast('地図データの読み込みに失敗しました。自動的に再試行します');
+      }
+      // 次回の45秒定期同期を待たずに、少し時間を置いてこの読み込み自体を
+      // 裏側で再試行する(電波復帰時に手動リロード不要にするため)。
+      loadPinsRetryTimer = setTimeout(loadPins, 10000);
     }
   }
+
+  // オンライン復帰を検知したら、待ち時間なしですぐに再試行する
+  window.addEventListener('online', function(){
+    loadPins();
+    syncPinsFromStorage();
+  });
 
   async function savePin(pin){
     await window.__firebaseReady;
