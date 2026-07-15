@@ -49,6 +49,13 @@ self.addEventListener('install', function(event){
   );
 });
 
+// 「今すぐ更新」ボタンが押されてSKIP_WAITINGを受け取った時だけtrueにする。
+// これがfalseのまま(=初回インストール時)にclients.claim()すると、
+// 今まさに開いているページを突然乗っ取ってcontrollerchangeを発生させ、
+// ページ側の自動リロード処理が意図せず発動してしまう(登録作業中の
+// データが消える原因になっていた)。
+var shouldClaimOnActivate = false;
+
 self.addEventListener('activate', function(event){
   event.waitUntil(
     caches.keys().then(function(keys){
@@ -58,7 +65,12 @@ self.addEventListener('activate', function(event){
           .map(function(k){ return caches.delete(k); })
       );
     }).then(function(){
-      return self.clients.claim();
+      // 明示的な更新の時だけクライアントを乗っ取る。
+      // 初回インストール時は何もしない(次回のナビゲーションから
+      // 自然にこのSWが使われるようにする。無用なリロードを起こさない)。
+      if(shouldClaimOnActivate){
+        return self.clients.claim();
+      }
     })
   );
 });
@@ -67,6 +79,7 @@ self.addEventListener('activate', function(event){
 // (自動では絶対にskipWaitingしない)
 self.addEventListener('message', function(event){
   if(event.data === 'SKIP_WAITING'){
+    shouldClaimOnActivate = true;
     self.skipWaiting();
   }
 });

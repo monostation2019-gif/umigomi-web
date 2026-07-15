@@ -958,6 +958,32 @@
     await window.ProfileAPI.save(uid, extra);
   }
 
+  // ---- プロフィール付加情報(bio/独自アイコン)のローカルキャッシュ ----
+  // これがないと、ログインのたびに毎回Firestoreの応答を待ってからでないと
+  // 独自アイコンが表示できず、「ニックネームは出るのにアイコンだけ遅れて
+  // 変わる」という見え方になってしまう。前回取得できた内容を端末に
+  // 覚えておき、次回はニックネームと同時に即座に描画する。
+  var PROFILE_CACHE_KEY = 'mm_profile_cache_v1';
+
+  function loadProfileExtraFromCache(uid){
+    try{
+      var raw = localStorage.getItem(PROFILE_CACHE_KEY);
+      if(!raw) return null;
+      var obj = JSON.parse(raw);
+      return (obj && obj.uid === uid) ? obj : null;
+    }catch(e){
+      return null;
+    }
+  }
+
+  function saveProfileExtraToCache(uid, bio, icon){
+    try{
+      localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({ uid: uid, bio: bio, icon: icon }));
+    }catch(e){
+      // 容量オーバー等が起きても致命的ではないので無視する
+    }
+  }
+
   function renderAvatarEl(el, user){
     if(user && user.icon){
       el.style.backgroundImage = 'url(' + user.icon + ')';
@@ -982,14 +1008,16 @@
       return;
     }
 
-    // まずFirebase Authだけで分かる情報で即座に画面を出す。
-    // bio/独自アイコン(Firestore)の読み込みを待って白い画面を長引かせない。
+    // 前回キャッシュした独自アイコン/bioがあれば、Firestoreの応答を
+    // 待たずにニックネームと同時に(=session-checkを消すのと同じタイミングで)
+    // 即座に反映する。
+    var cachedExtra = loadProfileExtraFromCache(fbUser.id);
     currentUser = {
       id: fbUser.id,
       name: fbUser.name,
       provider: fbUser.provider,
-      icon: fbUser.icon,
-      bio: '',
+      icon: (cachedExtra && cachedExtra.icon) || fbUser.icon,
+      bio: (cachedExtra && cachedExtra.bio) || '',
       createdAt: fbUser.createdAt
     };
     sessionCheck.style.display = 'none';
@@ -997,13 +1025,15 @@
     userBadgeName.textContent = currentUser.name;
     renderAvatarEl(userBadgeAvatar, currentUser);
 
-    // bio・独自アイコンなどの付加情報はバックグラウンドで取得し、届き次第反映する
+    // 他端末での変更等も反映できるよう、最新情報はバックグラウンドで取得し、
+    // 届き次第(変化があれば)反映＋キャッシュを更新する
     try{
       var extra = await loadProfileExtra(fbUser.id);
       if(currentUser && currentUser.id === fbUser.id){
         currentUser.icon = extra.customIcon || fbUser.icon;
         currentUser.bio = extra.bio || '';
         renderAvatarEl(userBadgeAvatar, currentUser);
+        saveProfileExtraToCache(fbUser.id, currentUser.bio, currentUser.icon);
       }
     }catch(e){
       console.error('プロフィール付加情報の取得に失敗しました', e);
@@ -1334,15 +1364,19 @@
   async function loadPins(){
     try{
       await window.__firebaseReady;
+      // 前回の訪問時に保存が完了しないまま終わっていたピンがあれば、先に再送する
+      await retryPendingSyncs();
       var pins = await window.PinsAPI.list();
       var remoteIds = {};
       pins.forEach(function(pin){
         remoteIds[pin.id] = true;
         addMarkerToMap(pin); // キャッシュ由来の同idマーカーは自動的に置き換わる
       });
-      // キャッシュにはあったがサーバー側で既に削除されているピンを除去
+      // キャッシュにはあったがサーバー側で既に削除されているピンを除去。
+      // ただし、まだ保存が完了していない(syncPending)ピンは、サーバーに
+      // 存在しないのが正常な状態なので誤って消さないようにする。
       Object.keys(pinStore).forEach(function(id){
-        if(!remoteIds[id]){
+        if(!remoteIds[id] && !pinStore[id].syncPending){
           if(markers[id]){ map.removeLayer(markers[id]); delete markers[id]; }
           delete pinStore[id];
         }
@@ -1413,6 +1447,7 @@
             bio: profileSyncPending.bio,
             customIcon: profileSyncPending.icon
           });
+          saveProfileExtraToCache(profileSyncPending.uid, profileSyncPending.bio, profileSyncPending.icon);
           profileSyncPending = null;
         }catch(e){ /* まだ通信できない。次回にまた試す */ }
       }
@@ -1897,6 +1932,10 @@
     var uid = currentUser.id;
     var bio = currentUser.bio;
     var icon = currentUser.icon;
+    // 通信の完了を待たず、次回起動時にも即座に正しい画像が出るよう
+    // 先にローカルキャッシュへ反映しておく
+    saveProfileExtraToCache(uid, bio, icon);
+
     retryAsync(function(){
       return (async function(){
         // 名前は実アカウント(Firebase)側にも反映し、他端末・再ログイン時も引き継がれるようにする
