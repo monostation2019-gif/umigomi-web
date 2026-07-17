@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>トレジャーシーカー伊勢 | 発見・回収履歴</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@400;500&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --forest:#3E6B4F; --forest-deep:#2C4E3A; --forest-soft:#EAF3EC;
+    --cream:#FBF8F0; --card:#FFFFFF; --torii:#B5502F; --gold:#E3A73B;
+    --ink:#233127; --ink-soft:#7A8A7D; --line:#E7E2D4;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%; margin:0;}
+  body{font-family:"Noto Sans JP", sans-serif; color:var(--ink); background:var(--forest-soft); display:flex; justify-content:center;}
+
+  .stage{width:100%; max-width:480px; min-height:100vh; min-height:100dvh; background:var(--cream); display:flex; flex-direction:column; position:relative;}
+
+  header{
+    background:linear-gradient(155deg, var(--forest) 0%, var(--forest-deep) 100%);
+    padding:calc(env(safe-area-inset-top,0px) + 16px) 18px 14px;
+    color:#fff; border-radius:0 0 22px 22px;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .header-top{display:flex; align-items:center; gap:10px;}
+  .back-btn{
+    width:32px; height:32px; border-radius:50%; flex-shrink:0;
+    background:rgba(255,255,255,0.16); border:1px solid rgba(255,255,255,0.28);
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; cursor:pointer; text-decoration:none;
+  }
+  .back-btn svg{width:16px; height:16px;}
+  header h1{font-family:"Kiwi Maru", serif; font-weight:500; font-size:18px; margin:0;}
+
+  /* ---- 発見スタンプラリー ---- */
+  .stamp-card{
+    background:var(--card); border-radius:18px; padding:16px 16px 14px;
+    margin-bottom:16px; box-shadow:0 6px 16px rgba(44,78,58,0.06);
+  }
+  .stamp-card-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; gap:8px;}
+  .stamp-card-title{font-family:"Kiwi Maru", serif; font-weight:500; font-size:14.5px; color:var(--ink); white-space:nowrap;}
+  .stamp-card-right{display:flex; align-items:center; gap:6px;}
+  .stamp-points{font-size:11.5px; font-weight:700; color:#8A5B0A; background:#FCF3DE; padding:3px 9px; border-radius:999px; white-space:nowrap;}
+  .stamp-card-count{font-size:12px; font-weight:700; color:var(--forest-deep); background:var(--forest-soft); padding:3px 10px; border-radius:999px; white-space:nowrap;}
+
+  .stamp-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px;}
+  .stamp-slot{
+    aspect-ratio:1/1; border-radius:12px; display:flex; align-items:center; justify-content:center;
+    font-size:19px; background:var(--forest-soft); border:2px dashed var(--line); color:var(--line);
+    transition:background .2s ease, border-color .2s ease;
+  }
+  .stamp-slot.filled{
+    border-style:solid; border-color:var(--gold);
+    background:linear-gradient(135deg,#FCE9BE,#F4C86A); color:#8A5B0A;
+    box-shadow:0 3px 8px rgba(227,167,59,0.35);
+  }
+
+  .stamp-claim-btn{
+    width:100%; border:none; border-radius:14px; padding:13px; font-size:14px; font-weight:900;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    background:var(--forest-soft); color:var(--ink-soft); cursor:not-allowed;
+    transition:transform .15s ease, background .15s ease, color .15s ease;
+  }
+  .stamp-claim-btn svg{width:16px; height:16px;}
+  .stamp-claim-btn.ready{
+    background:linear-gradient(135deg,var(--gold),#D98A2B); color:#fff; cursor:pointer;
+    box-shadow:0 6px 16px rgba(227,167,59,0.4); animation:stampPulse 1.6s ease-in-out infinite;
+  }
+  .stamp-claim-btn.ready:active{transform:scale(0.97);}
+  @keyframes stampPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.015);}}
+
+  .stamp-history{display:flex; gap:6px; flex-wrap:wrap;}
+  .stamp-history:not(:empty){margin-top:12px; padding-top:12px; border-top:1px solid var(--line);}
+  .stamp-history-item{
+    width:28px; height:28px; border-radius:50%; background:var(--forest-soft);
+    display:flex; align-items:center; justify-content:center; font-size:14px;
+  }
+
+  /* 種類別 横スクロールフィルター */
+  .chips{display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none;}
+  .chips::-webkit-scrollbar{display:none;}
+  .chip{
+    flex-shrink:0; display:flex; align-items:center; gap:5px;
+    background:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.32);
+    color:#fff; font-size:12px; font-weight:700;
+    padding:7px 12px; border-radius:999px; cursor:pointer;
+    transition:background .15s ease;
+  }
+  .chip.active{background:#fff; color:var(--forest-deep); border-color:#fff;}
+  .chip-divider{flex-shrink:0; width:1px; align-self:stretch; background:rgba(255,255,255,0.3); margin:2px 0;}
+
+  /* 発見/未回収/回収 ステータスタブ */
+  .status-tabs{
+    display:flex; gap:4px; background:rgba(255,255,255,0.14);
+    border:1px solid rgba(255,255,255,0.28); border-radius:12px; padding:3px;
+  }
+  .status-tab{
+    flex:1; text-align:center; font-size:12.5px; font-weight:700; color:rgba(255,255,255,0.85);
+    padding:7px 4px; border-radius:9px; cursor:pointer; transition:background .15s ease, color .15s ease;
+  }
+  .status-tab.active{background:#fff; color:var(--forest-deep);}
+
+  main{flex:1; padding:16px 16px 90px;}
+
+  /* 履歴一覧：左から3列、3列埋まったら次の行へ（CSS Gridの標準の流れ順） */
+  .history-list{display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;}
+
+  .history-card{
+    position:relative; aspect-ratio:1/1; border-radius:14px; overflow:hidden;
+    background:var(--forest-soft); cursor:pointer;
+    box-shadow:0 4px 10px rgba(44,78,58,0.08);
+  }
+  .history-card .thumb-wrap{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:var(--forest-soft);
+  }
+  .history-card .thumb-wrap img{width:100%; height:100%; object-fit:cover;}
+  .thumb-icon{font-size:26px;}
+
+  /* 下部：カテゴリ・日付のグラデーションオーバーレイ */
+  .card-info{
+    position:absolute; left:0; right:0; bottom:0;
+    padding:16px 7px 6px; color:#fff;
+    background:linear-gradient(to top, rgba(20,28,20,0.72) 0%, rgba(20,28,20,0.0) 100%);
+  }
+  .card-cat{
+    font-size:10.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    display:flex; align-items:center; gap:3px;
+  }
+  .card-date{font-size:8.5px; color:rgba(255,255,255,0.85); margin-top:1px;}
+
+  /* 右上：回収済みバッジ（〇で囲んだ「済」） */
+  .card-done-badge{
+    position:absolute; top:6px; right:6px; width:24px; height:24px; border-radius:50%;
+    background:var(--torii); color:#fff; font-size:10.5px; font-weight:900;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 2px 6px rgba(0,0,0,0.25); border:1.5px solid #fff;
+  }
+
+  /* 左上：編集・削除の小さいアイコンボタン（自分の発見記録のみ表示） */
+  .card-actions{position:absolute; top:6px; left:6px; display:flex; gap:4px;}
+  .icon-btn{
+    width:22px; height:22px; border-radius:50%; border:none; cursor:pointer;
+    background:rgba(255,255,255,0.85); color:var(--forest-deep);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 2px 5px rgba(0,0,0,0.15);
+  }
+  .icon-btn svg{width:11px; height:11px;}
+  .icon-btn.delete-btn{background:rgba(255,255,255,0.85); color:var(--torii);}
+
+  .skeleton-card{aspect-ratio:1/1; border-radius:14px; background:linear-gradient(90deg,#EFEBDF 25%,#F6F3E9 37%,#EFEBDF 63%); background-size:400% 100%; animation:sk 1.4s ease infinite;}
+  @keyframes sk{0%{background-position:100% 50%;}100%{background-position:0 50%;}}
+
+  .history-empty{grid-column:1 / -1; text-align:center; padding:50px 14px; color:var(--ink-soft); font-size:13px; line-height:1.7;}
+  .history-empty svg{width:30px; height:30px; margin-bottom:10px; color:var(--line);}
+
+  nav.bottom{
+    position:fixed; left:50%; transform:translateX(-50%); bottom:0;
+    width:100%; max-width:480px; background:var(--card);
+    border-top:1px solid var(--line); display:flex;
+    padding:8px 6px calc(env(safe-area-inset-bottom,0px) + 8px); z-index:10;
+  }
+  nav.bottom a{flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; text-decoration:none; color:var(--ink-soft); font-size:10.5px; padding:4px 0;}
+  nav.bottom a svg{width:20px; height:20px;}
+  nav.bottom a.active{color:var(--forest-deep); font-weight:700;}
+  nav.bottom a.active svg{color:var(--forest);}
+
+  .loading-overlay{position:fixed; inset:0; z-index:99; background:var(--cream); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; transition:opacity .35s ease;}
+  .loading-overlay .leaf{width:30px; height:30px; border:3px solid #DDE7DD; border-top-color:var(--forest); border-radius:50%; animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .loading-overlay p{color:var(--ink-soft); font-size:13px; margin:0;}
+
+  /* ---- 編集モーダル（ボトムシート） ---- */
+  .edit-overlay{
+    position:fixed; inset:0; z-index:60; background:rgba(20,28,20,0.5);
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  .edit-overlay.show{display:flex;}
+  .edit-sheet{
+    width:100%; max-width:480px; max-height:88vh; background:var(--cream);
+    border-radius:22px 22px 0 0; display:flex; flex-direction:column; overflow:hidden;
+  }
+  .edit-sheet-header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 18px 10px; flex-shrink:0;
+  }
+  .edit-sheet-header h2{font-family:"Kiwi Maru", serif; font-weight:500; font-size:16px; margin:0; color:var(--forest-deep);}
+  .edit-close-btn{width:28px; height:28px; border-radius:50%; border:none; background:var(--forest-soft); color:var(--forest-deep); display:flex; align-items:center; justify-content:center; cursor:pointer;}
+  .edit-close-btn svg{width:14px; height:14px;}
+
+  .edit-sheet-body{flex:1; overflow-y:auto; padding:0 18px 12px;}
+
+  .edit-card{background:var(--card); border-radius:16px; padding:14px; margin-bottom:12px; box-shadow:0 4px 12px rgba(44,78,58,0.05);}
+  .edit-card-label{font-size:12px; font-weight:700; color:var(--ink-soft); margin-bottom:9px;}
+
+  .cat-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
+  .cat-btn{
+    display:flex; flex-direction:column; align-items:center; gap:5px;
+    padding:11px 4px; border-radius:14px; border:1.5px solid var(--line);
+    background:#fff; cursor:pointer; font-size:10.5px; color:var(--ink);
+  }
+  .cat-btn .emoji{font-size:18px;}
+  .cat-btn.active{border-color:var(--forest); background:var(--forest-soft); color:var(--forest-deep); font-weight:700;}
+  .cat-divider{
+    grid-column:1 / -1; display:flex; align-items:center; gap:8px;
+    font-size:10px; color:var(--ink-soft); font-weight:700; margin:2px 0 -2px;
+  }
+  .cat-divider::before, .cat-divider::after{content:""; flex:1; height:1px; background:var(--line);}
+
+  .toggle-row{display:flex; align-items:center; justify-content:space-between;}
+  .toggle-text{font-size:13px;}
+  .toggle-sub{font-size:10.5px; color:var(--ink-soft); margin-top:2px;}
+  .switch{position:relative; width:46px; height:26px; flex-shrink:0;}
+  .switch input{opacity:0; width:0; height:0;}
+  .switch-track{position:absolute; inset:0; background:#DDE3D9; border-radius:999px; transition:background .15s ease; cursor:pointer;}
+  .switch-track::before{content:""; position:absolute; width:20px; height:20px; left:3px; top:3px; background:#fff; border-radius:50%; transition:transform .15s ease; box-shadow:0 1px 3px rgba(0,0,0,0.25);}
+  .switch input:checked + .switch-track{background:var(--torii);}
+  .switch input:checked + .switch-track::before{transform:translateX(20px);}
+
+  .edit-photo-zone{
+    border:1.5px dashed var(--line); border-radius:14px;
+    display:flex; align-items:center; justify-content:center;
+    height:130px; position:relative; overflow:hidden; background:#FAF8F1;
+    color:var(--ink-soft); font-size:12px; cursor:pointer;
+  }
+  .edit-photo-zone img{width:100%; height:100%; object-fit:cover; position:absolute; inset:0;}
+  .edit-photo-zone .hint{display:flex; flex-direction:column; align-items:center; gap:6px;}
+  .edit-photo-zone .hint svg{width:24px; height:24px;}
+  .edit-photo-remove{
+    position:absolute; top:8px; right:8px; z-index:2;
+    width:24px; height:24px; border-radius:50%; background:rgba(20,28,20,0.55);
+    color:#fff; display:flex; align-items:center; justify-content:center; border:none; cursor:pointer;
+  }
+  .edit-photo-remove svg{width:12px; height:12px;}
+
+  #editMiniMap{width:100%; height:140px; border-radius:14px;}
+  .edit-loc-hint{font-size:10.5px; color:var(--ink-soft); margin-top:6px; text-align:center;}
+  .edit-loc-hint.ok{color:var(--forest-deep); font-weight:700;}
+
+  textarea.edit-textarea, input.edit-input{
+    width:100%; border:1.5px solid var(--line); border-radius:12px;
+    padding:10px 11px; font-family:inherit; font-size:13px; color:var(--ink);
+    resize:none; background:#fff;
+  }
+  textarea.edit-textarea:focus, input.edit-input:focus{outline:none; border-color:var(--forest);}
+  .edit-char-count{text-align:right; font-size:10.5px; color:var(--ink-soft); margin-top:4px;}
+
+  .edit-sheet-footer{
+    display:flex; gap:10px; padding:12px 18px calc(env(safe-area-inset-bottom,0px) + 14px);
+    border-top:1px solid var(--line); flex-shrink:0; background:var(--cream);
+  }
+  .edit-sheet-footer button{flex:1; padding:13px; border-radius:14px; font-size:13.5px; font-weight:700; cursor:pointer; border:1.5px solid var(--line);}
+  .edit-sheet-footer .edit-cancel{background:#fff; color:var(--ink);}
+  .edit-sheet-footer .edit-save{background:var(--forest); color:#fff; border-color:var(--forest);}
+  .edit-sheet-footer .edit-save:disabled{opacity:.55; cursor:not-allowed;}
+
+  /* ---- 削除確認モーダル（ブラウザ標準confirm()に依存しない） ---- */
+  .confirm-overlay{
+    position:fixed; inset:0; z-index:70; background:rgba(20,28,20,0.5);
+    display:none; align-items:center; justify-content:center; padding:24px;
+  }
+  .confirm-overlay.show{display:flex;}
+  .confirm-sheet{
+    width:100%; max-width:300px; background:var(--cream); border-radius:18px;
+    padding:20px 18px; box-shadow:0 16px 40px rgba(0,0,0,0.25);
+  }
+  .confirm-message{font-size:13.5px; color:var(--ink); line-height:1.7; margin:0 0 16px; text-align:center;}
+  .confirm-actions{display:flex; gap:10px;}
+  .confirm-actions button{flex:1; padding:12px; border-radius:12px; font-size:13.5px; font-weight:700; cursor:pointer; border:1.5px solid var(--line);}
+  .confirm-cancel{background:#fff; color:var(--ink);}
+  .confirm-ok{background:var(--torii); color:#fff; border-color:var(--torii);}
+  .confirm-ok.positive{background:var(--gold); border-color:var(--gold); color:#fff;}
+  .stamp-result-sheet{text-align:center;}
+  .stamp-result-emoji{font-size:46px; line-height:1; margin-bottom:8px;}
+  .stamp-result-title{font-family:"Kiwi Maru", serif; font-weight:500; font-size:17px; color:var(--ink); margin:0 0 6px;}
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="leaf"></div>
+  <p>読み込み中…</p>
+</div>
+
+<div class="stage">
+  <header>
+    <div class="header-top">
+      <a class="back-btn" href="mypage.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+      </a>
+      <h1>発見・回収履歴</h1>
+    </div>
+    <div class="chips" id="historyCategoryChips">
+      <div class="chip active" data-cat="all">すべて</div>
+      <div class="chip" data-cat="ペットボトル">💧 ペットボトル</div>
+      <div class="chip" data-cat="たばこ吸い殻">🚬 たばこ吸い殻</div>
+      <div class="chip" data-cat="空き缶">🥫 空き缶</div>
+      <div class="chip" data-cat="プラスチック">♻️ プラスチック</div>
+      <div class="chip" data-cat="ビン・ガラス">🍾 ビン・ガラス</div>
+      <div class="chip" data-cat="紙類">📄 紙類</div>
+      <div class="chip" data-cat="大型ゴミ">🛋️ 大型ゴミ</div>
+      <div class="chip" data-cat="その他">🗑️ その他</div>
+      <div class="chip" data-cat="危険">⚠️ 危険</div>
+      <div class="chip-divider"></div>
+      <div class="chip" data-cat="グルメ">🍴 グルメ</div>
+      <div class="chip" data-cat="歴史・文化">🏯 歴史・文化</div>
+      <div class="chip" data-cat="おすすめ">⭐ おすすめ</div>
+    </div>
+    <div class="status-tabs" id="statusTabs">
+      <div class="status-tab active" data-status="all">発見</div>
+      <div class="status-tab" data-status="collected">回収</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="stamp-card">
+      <div class="stamp-card-head">
+        <span class="stamp-card-title">👣 発見スタンプラリー</span>
+        <div class="stamp-card-right">
+          <span class="stamp-points" id="stampPoints">🪙 0pt</span>
+          <span class="stamp-card-count" id="stampCount">0 / 9</span>
+        </div>
+      </div>
+      <div class="stamp-grid" id="stampGrid"></div>
+      <button class="stamp-claim-btn" id="stampClaimBtn" type="button" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v9H4v-9M2 7h20v5H2V7z"/><path d="M12 22V7M12 7C10 3 5 3 5 5.5 5 7 8 7 12 7zM12 7c2-4 7-4 7-1.5 0 1.5-3 1.5-7 1.5z"/></svg>
+        <span id="stampClaimBtnText">あと9個の発見でGET！</span>
+      </button>
+      <div class="stamp-history" id="stampHistory"></div>
+    </div>
+
+    <div class="history-list" id="historyList">
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+    </div>
+  </main>
+
+  <nav class="bottom">
+    <a href="home.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+      ホーム
+    </a>
+    <a href="map.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-6-3V4l6 3 6-3 6 3v13l-6-3-6 3z"/><path d="M9 7v13M15 4v13"/></svg>
+      マップ
+    </a>
+    <a href="discover.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      発見
+    </a>
+    <a href="mypage.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+      マイページ
+    </a>
+  </nav>
+</div>
+
+<!-- 編集ボトムシート -->
+<div class="edit-overlay" id="editOverlay">
+  <div class="edit-sheet">
+    <div class="edit-sheet-header">
+      <h2>記録を編集</h2>
+      <button class="edit-close-btn" id="editCloseBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+
+    <div class="edit-sheet-body">
+      <div class="edit-card">
+        <div class="edit-card-label">ゴミの種類</div>
+        <div class="cat-grid" id="editCatGrid">
+          <div class="cat-btn" data-cat="ペットボトル"><span class="emoji">💧</span>ペットボトル</div>
+          <div class="cat-btn" data-cat="たばこ吸い殻"><span class="emoji">🚬</span>たばこ吸い殻</div>
+          <div class="cat-btn" data-cat="空き缶"><span class="emoji">🥫</span>空き缶</div>
+          <div class="cat-btn" data-cat="プラスチック"><span class="emoji">♻️</span>プラスチック</div>
+          <div class="cat-btn" data-cat="ビン・ガラス"><span class="emoji">🍾</span>ビン・ガラス</div>
+          <div class="cat-btn" data-cat="紙類"><span class="emoji">📄</span>紙類</div>
+          <div class="cat-btn" data-cat="大型ゴミ"><span class="emoji">🛋️</span>大型ゴミ</div>
+          <div class="cat-btn" data-cat="その他"><span class="emoji">🗑️</span>その他</div>
+          <div class="cat-btn" data-cat="危険"><span class="emoji">⚠️</span>危険</div>
+          <div class="cat-divider">まちの発見</div>
+          <div class="cat-btn" data-cat="グルメ"><span class="emoji">🍴</span>グルメ</div>
+          <div class="cat-btn" data-cat="歴史・文化"><span class="emoji">🏯</span>歴史・文化</div>
+          <div class="cat-btn" data-cat="おすすめ"><span class="emoji">⭐</span>おすすめ</div>
+        </div>
+      </div>
+
+      <div class="edit-card">
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-text">大型ゴミを回収した</div>
+            <div class="toggle-sub">粗大ゴミなどを実際に回収した場合はON</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="editBulkyToggle">
+            <span class="switch-track"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="edit-card">
+        <div class="edit-card-label">写真</div>
+        <div class="edit-photo-zone" id="editPhotoZone">
+          <div class="hint" id="editPhotoHint">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            タップして撮影・選択
+          </div>
+          <img id="editPhotoPreview" style="display:none;" alt="">
+          <button type="button" class="edit-photo-remove" id="editPhotoRemoveBtn" style="display:none;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <input type="file" id="editPhotoInput" accept="image/*" capture="environment" style="display:none;">
+      </div>
+
+      <div class="edit-card">
+        <div class="edit-card-label">場所（ドラッグで微調整できます）</div>
+        <div id="editMiniMap"></div>
+        <div class="edit-loc-hint">ピンをドラッグ、または地図をタップして位置を修正できます</div>
+      </div>
+
+      <div class="edit-card">
+        <div class="edit-card-label">エリア（町名など）</div>
+        <input class="edit-input" type="text" id="editTownInput" maxlength="20">
+        <div class="edit-loc-hint" id="editTownStatus"></div>
+      </div>
+
+      <div class="edit-card">
+        <div class="edit-card-label">メモ</div>
+        <textarea class="edit-textarea" id="editMemoInput" rows="3" maxlength="140"></textarea>
+        <div class="edit-char-count"><span id="editMemoCount">0</span>/140</div>
+      </div>
+    </div>
+
+    <div class="edit-sheet-footer">
+      <button class="edit-cancel" id="editCancelBtn">キャンセル</button>
+      <button class="edit-save" id="editSaveBtn">保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 削除確認モーダル（ブラウザ標準のconfirm()は環境によって出ないことがあるため自前で用意） -->
+<div class="confirm-overlay" id="deleteConfirmOverlay">
+  <div class="confirm-sheet">
+    <p class="confirm-message">この記録を削除しますか？<br>この操作は取り消せません。</p>
+    <div class="confirm-actions">
+      <button class="confirm-cancel" id="deleteCancelBtn" type="button">キャンセル</button>
+      <button class="confirm-ok" id="deleteOkBtn" type="button">削除する</button>
+    </div>
+  </div>
+</div>
+
+<!-- スタンプ9個達成時の確認モーダル：使う/使わないを選んでもらう -->
+<div class="confirm-overlay" id="stampConfirmOverlay">
+  <div class="confirm-sheet">
+    <p class="confirm-message">スタンプが9個たまりました！<br>ここで使いますか？</p>
+    <div class="confirm-actions">
+      <button class="confirm-cancel" id="stampDeclineBtn" type="button">使わない</button>
+      <button class="confirm-ok positive" id="stampUseBtn" type="button">使う</button>
+    </div>
+  </div>
+</div>
+
+<!-- スタンプ獲得の結果モーダル -->
+<div class="confirm-overlay" id="stampResultOverlay">
+  <div class="confirm-sheet stamp-result-sheet">
+    <div class="stamp-result-emoji" id="stampResultEmoji">🎁</div>
+    <p class="stamp-result-title" id="stampResultTitle">獲得しました！</p>
+    <p class="confirm-message" id="stampResultDesc"></p>
+    <div class="confirm-actions">
+      <button class="confirm-ok positive" id="stampResultCloseBtn" type="button">とじる</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   Firebase 初期化（他ページと同じ設定）
+   ===================================================================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyB7f8QThoqYc-iDuMhKqp3MGBRAhln9ZhI",
+  authDomain: "treasure-seeker-ise.firebaseapp.com",
+  projectId: "treasure-seeker-ise",
+  storageBucket: "treasure-seeker-ise.firebasestorage.app",
+  messagingSenderId: "278199675502",
+  appId: "1:278199675502:web:295dfa975a03707f27947f"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+/* ゲスト（匿名）ログインのUIDがページ遷移・再読み込みのたびに変わってしまうと、
+   discover.html で書き込んだ uid と、このページで絞り込みに使う uid が
+   食い違い、「登録はできるのに履歴・プロフィールには何も出てこない」という
+   症状になる。これを避けるため、認証状態を必ずブラウザに永続化(LOCAL)する
+   ことを明示しておく（本来デフォルトでもLOCALだが、明示することで
+   意図しない挙動変化を防ぐ）。 */
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(err => {
+  console.warn('認証の永続化設定に失敗しました', err);
+});
+
+const LOGIN_PAGE = "login.html";
+
+const overlay         = document.getElementById('loadingOverlay');
+const historyListEl   = document.getElementById('historyList');
+
+const stampGridEl        = document.getElementById('stampGrid');
+const stampCountEl       = document.getElementById('stampCount');
+const stampPointsEl      = document.getElementById('stampPoints');
+const stampHistoryEl     = document.getElementById('stampHistory');
+const stampClaimBtn      = document.getElementById('stampClaimBtn');
+const stampClaimBtnText  = document.getElementById('stampClaimBtnText');
+const stampConfirmOverlay = document.getElementById('stampConfirmOverlay');
+const stampDeclineBtn    = document.getElementById('stampDeclineBtn');
+const stampUseBtn        = document.getElementById('stampUseBtn');
+const stampResultOverlay = document.getElementById('stampResultOverlay');
+const stampResultEmoji   = document.getElementById('stampResultEmoji');
+const stampResultTitle   = document.getElementById('stampResultTitle');
+const stampResultDesc    = document.getElementById('stampResultDesc');
+const stampResultCloseBtn = document.getElementById('stampResultCloseBtn');
+
+const editOverlay        = document.getElementById('editOverlay');
+const editCloseBtn        = document.getElementById('editCloseBtn');
+const editCancelBtn       = document.getElementById('editCancelBtn');
+const editSaveBtn         = document.getElementById('editSaveBtn');
+const editCatGrid         = document.getElementById('editCatGrid');
+const editBulkyToggle     = document.getElementById('editBulkyToggle');
+const editPhotoZone       = document.getElementById('editPhotoZone');
+const editPhotoHint       = document.getElementById('editPhotoHint');
+const editPhotoPreview    = document.getElementById('editPhotoPreview');
+const editPhotoRemoveBtn  = document.getElementById('editPhotoRemoveBtn');
+const editPhotoInput      = document.getElementById('editPhotoInput');
+const editTownInput       = document.getElementById('editTownInput');
+const editTownStatus      = document.getElementById('editTownStatus');
+const editMemoInput       = document.getElementById('editMemoInput');
+const editMemoCount       = document.getElementById('editMemoCount');
+
+const deleteConfirmOverlay = document.getElementById('deleteConfirmOverlay');
+const deleteCancelBtn      = document.getElementById('deleteCancelBtn');
+const deleteOkBtn          = document.getElementById('deleteOkBtn');
+let pendingDeleteId = null;
+
+/* 種類ごとの絵文字（発見する / クリーンマップと同じマスター） */
+const CATEGORY_EMOJI = {
+  'ペットボトル':'💧', 'たばこ吸い殻':'🚬', '空き缶':'🥫', 'プラスチック':'♻️',
+  '危険':'⚠️', 'ビン・ガラス':'🍾', '紙類':'📄', '大型ゴミ':'🛋️', 'その他':'🗑️',
+  'グルメ':'🍴', '歴史・文化':'🏯', 'おすすめ':'⭐',
+  '危険物':'⚠️', 'ビン':'🍾' /* 旧カテゴリ名（過去データ互換用） */
+};
+
+let currentUser = null;
+let myReports = [];
+let historyEntries = [];  // = myReports のコピー（並び替え済み）。自分の発見記録のみを表示する
+let activeCategory = 'all';   // 種類別フィルター（ヘッダーのchips）
+let activeStatus = 'all';     // ステータスフィルター（発見=all / 回収=collected）
+
+/* ---------------------------------------------------------------------
+   発見スタンプラリー
+   ・進捗 = 自分の発見総数(myReports.length) ＋ 自分の回収総数(myCollectionsCount)
+     − stampClaimedCount（これまでに「使う」を選んで消費したぶん）。
+     つまり「発見してもスタンプ」「(他ユーザーの発見物を)回収してもスタンプ」の
+     どちらも自分自身のスタンプとして貯まる。他ユーザーの操作は一切影響しない。
+   ・9たまるごとに獲得ボタンが押せるようになる。
+   ・「使わない」を選んだ場合は何も消費せず、達成状態のまま維持する
+     （次にページを開いた時もすぐ獲得ボタンを押せる）。
+   --------------------------------------------------------------------- */
+const STAMP_GOAL = 9;
+const BADGE_MASTER = [
+  { id:'first_find',   emoji:'🌱', label:'はじめの一歩' },
+  { id:'coast_master', emoji:'🌊', label:'海岸マスター' },
+  { id:'week_streak',  emoji:'🔥', label:'7日連続' },
+  { id:'bulky_hunter', emoji:'🛋️', label:'大型ゴミ回収' },
+  { id:'top_ranker',   emoji:'🏆', label:'週間1位' }
+];
+let stampClaimedCount = 0;
+let userPoints = 0;
+let userBadges = [];
+let userRewards = [];
+let myCollectionsCount = 0; // 自分が(他ユーザーの発見物を)回収した件数。スタンプ進捗の加算にのみ使う
+
+
+// 編集中の状態
+let editingId = null;
+let editCategory = null;
+let editLat = null, editLng = null;
+let editPhotoDataUrl = undefined; // undefined=未変更 / null=削除 / 文字列=新しい画像
+let editMiniMap = null, editMiniMarker = null;
+let editTownGeocodeToken = 0;
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+}
+
+function formatDate(ts){
+  if(!ts || !ts.toDate) return '';
+  const d = ts.toDate();
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  const hh = String(d.getHours()).padStart(2,'0'), mm = String(d.getMinutes()).padStart(2,'0');
+  return `${y}/${m}/${day} ${hh}:${mm}`;
+}
+
+/* ---------------------------------------------------------------------
+   履歴一覧の取得・描画（自分の発見記録＝reports のみを対象とする。
+   他ユーザーが見つけたゴミを回収した記録＝collections はこのページでは扱わない）
+   --------------------------------------------------------------------- */
+async function loadHistory(){
+  // uid の等価条件のみで取得する（orderByを併用すると複合インデックスが必要になり、
+  // 未作成の場合はクエリが失敗して一覧が反映されない原因になるため、並び替えは
+  // クライアント側で行う）。
+  let hadPermissionError = false;
+
+  try{
+    const snap = await db.collection('reports').where('uid', '==', currentUser.uid).limit(200).get();
+    myReports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch(err){
+    console.error('発見記録の取得に失敗しました', err);
+    if(err && err.code === 'permission-denied') hadPermissionError = true;
+    myReports = [];
+  }
+
+  historyEntries = [...myReports];
+  historyEntries.sort((a, b) => {
+    const at = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+    const bt = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+    return bt - at;
+  });
+
+  if(historyEntries.length === 0 && hadPermissionError){
+    historyListEl.innerHTML = `
+      <div class="history-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+        この端末・アカウントには履歴を読み取る権限がありません（Firestoreのセキュリティルールをご確認ください）
+      </div>`;
+    return;
+  }
+
+  renderHistoryList();
+}
+
+/* ---------------------------------------------------------------------
+   発見スタンプラリーの状態取得・描画・獲得処理
+   --------------------------------------------------------------------- */
+async function loadStampState(){
+  try{
+    const doc = await db.collection('users').doc(currentUser.uid).get();
+    const data = doc.exists ? doc.data() : {};
+    stampClaimedCount = data.stampClaimedCount || 0;
+    userPoints = data.points || 0;
+    userBadges = data.badges || [];
+    userRewards = data.rewards || [];
+  }catch(err){
+    console.warn('スタンプの状態取得に失敗しました', err);
+  }
+
+  // 自分の回収件数は一覧表示には使わないため、件数だけをcount()集計で取得する
+  // （ドキュメント本体を全件取得しない分、通信量・読み取り数を抑えられる）
+  try{
+    const countSnap = await db.collection('collections')
+      .where('collectorUid', '==', currentUser.uid)
+      .count().get();
+    myCollectionsCount = countSnap.data().count;
+  }catch(err){
+    console.warn('回収件数の取得に失敗しました', err);
+    myCollectionsCount = 0;
+  }
+
+  renderStampBoard();
+}
+
+function renderStampBoard(){
+  const progress = Math.max(0, (myReports.length + myCollectionsCount) - stampClaimedCount);
+  const filled = Math.min(progress, STAMP_GOAL);
+  const ready = progress >= STAMP_GOAL;
+
+  stampGridEl.innerHTML = Array.from({ length: STAMP_GOAL }).map((_, i) => `
+    <div class="stamp-slot ${i < filled ? 'filled' : ''}">${i < filled ? '👣' : ''}</div>
+  `).join('');
+
+  stampCountEl.textContent = `${filled} / ${STAMP_GOAL}`;
+  stampPointsEl.textContent = `🪙 ${userPoints}pt`;
+
+  stampClaimBtn.disabled = !ready;
+  stampClaimBtn.classList.toggle('ready', ready);
+  stampClaimBtnText.textContent = ready
+    ? 'スタンプ達成！獲得する'
+    : `あと${STAMP_GOAL - filled}個の発見でGET！`;
+
+  renderStampHistory();
+}
+
+function renderStampHistory(){
+  if(!userRewards.length){
+    stampHistoryEl.innerHTML = '';
+    return;
+  }
+  const recent = userRewards.slice(-6).slice().reverse();
+  stampHistoryEl.innerHTML = recent.map(r =>
+    `<div class="stamp-history-item" title="${escapeHtml(r.label || '')}">${r.emoji || '🎁'}</div>`
+  ).join('');
+}
+
+/* 抽選：未取得のバッジがあれば バッジ/ポイント/お店の特典 の中から均等に、
+   バッジを取り尽くしていればポイント/お店の特典から均等に選ぶ */
+function pickStampReward(){
+  const availableBadges = BADGE_MASTER.filter(b => !userBadges.includes(b.id));
+  const pool = availableBadges.length ? ['badge', 'points', 'perk'] : ['points', 'perk'];
+  const type = pool[Math.floor(Math.random() * pool.length)];
+
+  if(type === 'badge'){
+    const badge = availableBadges[Math.floor(Math.random() * availableBadges.length)];
+    return { type, badgeId: badge.id, emoji: badge.emoji, title: 'バッジGET！', label: `バッジ「${badge.label}」を獲得しました` };
+  }
+  if(type === 'points'){
+    const amount = [10, 20, 30][Math.floor(Math.random() * 3)];
+    return { type, amount, emoji: '🪙', title: 'ポイントGET！', label: `${amount}ポイント獲得しました` };
+  }
+  return { type, emoji: '🎁', title: '特典GET！', label: 'お店で使える特典を獲得しました' };
+}
+
+stampClaimBtn.addEventListener('click', () => {
+  if(stampClaimBtn.disabled) return;
+  stampConfirmOverlay.classList.add('show');
+});
+stampDeclineBtn.addEventListener('click', () => {
+  // 「使わない」：何も消費しない。達成状態のまま維持し、いつでもまた押せるようにする
+  stampConfirmOverlay.classList.remove('show');
+});
+stampConfirmOverlay.addEventListener('click', (e) => {
+  if(e.target === stampConfirmOverlay) stampConfirmOverlay.classList.remove('show');
+});
+
+stampUseBtn.addEventListener('click', async () => {
+  stampUseBtn.disabled = true;
+  const reward = pickStampReward();
+  const rewardEntry = { type: reward.type, label: reward.label, emoji: reward.emoji, earnedAt: Date.now() };
+
+  const updateData = {
+    stampClaimedCount: firebase.firestore.FieldValue.increment(STAMP_GOAL),
+    rewards: firebase.firestore.FieldValue.arrayUnion(rewardEntry)
+  };
+  if(reward.type === 'badge'){
+    updateData.badges = firebase.firestore.FieldValue.arrayUnion(reward.badgeId);
+  } else if(reward.type === 'points'){
+    updateData.points = firebase.firestore.FieldValue.increment(reward.amount);
+  }
+
+  try{
+    await db.collection('users').doc(currentUser.uid).set(updateData, { merge: true });
+  }catch(err){
+    console.error('スタンプ特典の獲得に失敗しました', err);
+    alert('獲得に失敗しました。もう一度お試しください。');
+    stampUseBtn.disabled = false;
+    return;
+  }
+  stampUseBtn.disabled = false;
+
+  // ローカル状態を更新
+  stampClaimedCount += STAMP_GOAL;
+  if(reward.type === 'badge') userBadges.push(reward.badgeId);
+  if(reward.type === 'points') userPoints += reward.amount;
+  userRewards.push(rewardEntry);
+
+  stampConfirmOverlay.classList.remove('show');
+  renderStampBoard();
+
+  stampResultEmoji.textContent = reward.emoji;
+  stampResultTitle.textContent = reward.title;
+  stampResultDesc.textContent = reward.label;
+  stampResultOverlay.classList.add('show');
+});
+stampResultCloseBtn.addEventListener('click', () => stampResultOverlay.classList.remove('show'));
+stampResultOverlay.addEventListener('click', (e) => {
+  if(e.target === stampResultOverlay) stampResultOverlay.classList.remove('show');
+});
+
+
+/* エントリが「回収済み」かどうかを判定する
+   ・r.collected  … 他ユーザーがマップ上でこの発見物を回収した場合に true になる
+   ・r.isBulky    … 自分自身が「回収した」として記録した場合に true になる
+   どちらか一方でも true なら回収済み扱いにする */
+function isEntryCollected(r){
+  return !!r.collected || !!r.isBulky;
+}
+
+/* 種類別chips × ステータスタブ の両方を満たすものだけに絞り込む */
+function getFilteredEntries(){
+  return historyEntries.filter(r => {
+    if(activeCategory !== 'all' && r.category !== activeCategory) return false;
+    if(activeStatus === 'collected' && !isEntryCollected(r)) return false;
+    return true;
+  });
+}
+
+function formatDateShort(ts){
+  if(!ts || !ts.toDate) return '';
+  const d = ts.toDate();
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+
+/* 一覧全体の再描画（空状態も含めて一元管理する） */
+function renderHistoryList(){
+  const filtered = getFilteredEntries();
+  if(historyEntries.length === 0){
+    historyListEl.innerHTML = `
+      <div class="history-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+        まだ発見の記録がありません
+      </div>`;
+    return;
+  }
+  if(filtered.length === 0){
+    historyListEl.innerHTML = `
+      <div class="history-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+        条件に合う記録がありません
+      </div>`;
+    return;
+  }
+  historyListEl.innerHTML = filtered.map(renderRow).join('');
+  loadThumbnails();
+}
+
+function renderRow(r){
+  const emoji = CATEGORY_EMOJI[r.category] || '🗑️';
+  const isCollected = isEntryCollected(r);
+
+  const actionsHtml = `<button class="icon-btn edit-btn" data-id="${r.id}" title="編集">
+         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+       </button>
+       <button class="icon-btn delete-btn" data-id="${r.id}" title="削除">
+         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>
+       </button>`;
+
+  // 回収済みなら〇で囲んだ「済」バッジを右上に表示
+  // （r.collected＝他ユーザーがマップ上で回収した／r.isBulky＝自分が回収済みとして記録した、のどちらでも表示）
+  const doneBadgeHtml = isCollected
+    ? `<div class="card-done-badge" title="${r.collected && !r.isBulky ? '他のユーザーが回収済み' : '回収済み'}">済</div>`
+    : '';
+
+  return `
+    <div class="history-card" data-id="${r.id}" data-lat="${r.lat ?? ''}" data-lng="${r.lng ?? ''}">
+      <div class="thumb-wrap" id="thumb-${r.id}"><div class="thumb-icon">${emoji}</div></div>
+      ${doneBadgeHtml}
+      <div class="card-actions">
+        ${actionsHtml}
+      </div>
+      <div class="card-info">
+        <div class="card-cat">${emoji} ${escapeHtml(r.category || 'その他')}</div>
+        <div class="card-date">${formatDateShort(r.createdAt)}</div>
+      </div>
+    </div>`;
+}
+
+/* 種類別chipsのクリック */
+document.getElementById('historyCategoryChips').addEventListener('click', (e) => {
+  const chip = e.target.closest('.chip');
+  if(!chip) return;
+  document.querySelectorAll('#historyCategoryChips .chip').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+  activeCategory = chip.dataset.cat;
+  renderHistoryList();
+});
+
+/* 発見 / 未回収 / 回収 ステータスタブのクリック */
+document.getElementById('statusTabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('.status-tab');
+  if(!tab) return;
+  document.querySelectorAll('#statusTabs .status-tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  activeStatus = tab.dataset.status;
+  renderHistoryList();
+});
+
+/* 写真は reportPhotos コレクションに分離されているため、一覧表示後に個別取得する。 */
+function loadThumbnails(){
+  historyEntries.forEach(r => {
+    db.collection('reportPhotos').doc(r.id).get().then(doc => {
+      if(doc.exists && doc.data().imageBase64){
+        const wrap = document.getElementById('thumb-' + r.id);
+        if(wrap){ wrap.innerHTML = `<img src="${doc.data().imageBase64}" alt="">`; }
+      }
+    }).catch(() => { /* 写真がない・取得できない場合はアイコンのまま */ });
+  });
+}
+
+/* ---------------------------------------------------------------------
+   一覧のクリック処理：編集／削除／地図へジャンプ
+   --------------------------------------------------------------------- */
+historyListEl.addEventListener('click', (e) => {
+  const editBtn = e.target.closest('.edit-btn');
+  if(editBtn){ openEditModal(editBtn.dataset.id); return; }
+
+  const deleteBtn = e.target.closest('.delete-btn');
+  if(deleteBtn){ openDeleteConfirm(deleteBtn.dataset.id); return; }
+
+  const row = e.target.closest('.history-card');
+  if(row){
+    const lat = parseFloat(row.dataset.lat), lng = parseFloat(row.dataset.lng);
+    if(!Number.isNaN(lat) && !Number.isNaN(lng)){
+      window.location.href = `map.html?lat=${lat}&lng=${lng}&id=${encodeURIComponent(row.dataset.id)}`;
+    }
+  }
+});
+
+/* ---------------------------------------------------------------------
+   削除確認モーダル
+   （ブラウザ標準の confirm() は端末・PWA表示モードによっては表示されず、
+   タップしても何も起きないように見えるケースがあるため自前で実装する）
+   --------------------------------------------------------------------- */
+function openDeleteConfirm(id){
+  pendingDeleteId = id;
+  deleteConfirmOverlay.classList.add('show');
+}
+function closeDeleteConfirm(){
+  deleteConfirmOverlay.classList.remove('show');
+  pendingDeleteId = null;
+}
+deleteCancelBtn.addEventListener('click', closeDeleteConfirm);
+deleteConfirmOverlay.addEventListener('click', (e) => {
+  if(e.target === deleteConfirmOverlay) closeDeleteConfirm(); // 背景タップでも閉じる
+});
+deleteOkBtn.addEventListener('click', async () => {
+  const id = pendingDeleteId;
+  closeDeleteConfirm();
+  if(!id) return;
+  await performDelete(id);
+});
+
+async function performDelete(id){
+  const r = myReports.find(x => x.id === id);
+  if(!r) return;
+
+  deleteOkBtn.disabled = true;
+
+  try{
+    // まず記録本体を削除する。ここが成功すれば「削除」自体は完了とみなす。
+    await db.collection('reports').doc(id).delete();
+  }catch(err){
+    console.error('削除に失敗しました', err && err.code, err && err.message);
+    alert(`削除に失敗しました。もう一度お試しください。${err && err.code ? `\n(${err.code})` : ''}`);
+    deleteOkBtn.disabled = false;
+    return;
+  }
+  deleteOkBtn.disabled = false;
+
+  // 写真の削除は付随処理（失敗しても致命的ではないので握りつぶす）
+  await db.collection('reportPhotos').doc(id).delete().catch(() => {});
+
+  // 削除が確定したので、ローカル一覧を更新して再描画する
+  myReports = myReports.filter(x => x.id !== id);
+  historyEntries = historyEntries.filter(x => x.id !== id);
+  renderHistoryList();
+  renderStampBoard(); // 発見総数が変わるのでスタンプの進捗表示も更新する
+
+  // 統計(totalFinds/totalCollected)の更新も付随処理。ここが権限エラー等で
+  // 失敗しても、既に削除・画面反映は完了しているのでユーザーには影響させない。
+  try{
+    await db.collection('users').doc(currentUser.uid).set({
+      totalFinds: firebase.firestore.FieldValue.increment(-1),
+      totalCollected: firebase.firestore.FieldValue.increment(r.isBulky ? -1 : 0)
+    }, { merge: true });
+  }catch(err){
+    console.warn('統計情報の更新に失敗しました（削除自体は完了しています）', err);
+  }
+}
+
+/* ---------------------------------------------------------------------
+   編集モーダル
+   --------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------
+   位置情報 → エリア名の自動取得（国土地理院 逆ジオコーディングAPI）
+   discover.html（発見する ページ）と同じロジック。ピンを動かした場合は
+   ランキング集計とのズレを防ぐため、必ずここで町名を再取得して上書きする。
+   （手入力のみで町名を変えたい場合は、ピンを動かさなければ上書きされない）
+   --------------------------------------------------------------------- */
+const EDIT_MIE_MUNI_MAP = {
+  '24201': '津市',
+  '24202': '四日市市',
+  '24203': '伊勢市',
+  '24204': '松阪市',
+  '24205': '桑名市',
+  '24207': '鈴鹿市',
+  '24208': '名張市',
+  '24209': '尾鷲市',
+  '24210': '亀山市',
+  '24211': '鳥羽市',
+  '24212': '熊野市',
+  '24214': 'いなべ市',
+  '24215': '志摩市',
+  '24216': '伊賀市',
+  '24303': '木曽岬町',
+  '24341': '菰野町',
+  '24343': '朝日町',
+  '24344': '川越町',
+  '24441': '多気町',
+  '24442': '明和町',
+  '24443': '大台町',
+  '24461': '玉城町',
+  '24470': '度会町',
+  '24471': '大紀町',
+  '24472': '南伊勢町',
+  '24543': '紀北町',
+  '24561': '御浜町',
+  '24562': '紀宝町'
+};
+
+async function fillEditTownFromLatLng(lat, lng){
+  const myToken = ++editTownGeocodeToken;
+  if(editTownStatus){
+    editTownStatus.textContent = 'エリアを自動取得中…';
+    editTownStatus.classList.remove('ok');
+  }
+
+  try{
+    const url = `https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${lat}&lon=${lng}`;
+    const res = await fetch(url);
+    if(myToken !== editTownGeocodeToken) return; // 古い応答は破棄
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+
+    const data = await res.json();
+    const results = data && data.results;
+    const cityName = results && EDIT_MIE_MUNI_MAP[results.muniCd];
+
+    if(cityName){
+      const full = cityName + (results.lv01Nm || '');
+      editTownInput.value = full;
+      if(editTownStatus){
+        editTownStatus.textContent = '位置情報から自動取得しました（違う場合は修正してください）';
+        editTownStatus.classList.add('ok');
+      }
+    } else {
+      // 三重県内の既知市町として認識できなかった場合は、絶対に推測で埋めない
+      if(editTownStatus){
+        editTownStatus.textContent = '自動取得できませんでした。お手数ですが手入力をお願いします';
+        editTownStatus.classList.remove('ok');
+      }
+    }
+  }catch(err){
+    if(myToken !== editTownGeocodeToken) return;
+    console.warn('エリアの自動取得に失敗しました', err);
+    if(editTownStatus){
+      editTownStatus.textContent = '自動取得できませんでした。お手数ですが手入力をお願いします';
+      editTownStatus.classList.remove('ok');
+    }
+  }
+}
+
+function ensureEditMiniMap(lat, lng){
+  if(typeof lat !== 'number' || typeof lng !== 'number') return;
+  if(!editMiniMap){
+    editMiniMap = L.map('editMiniMap', { zoomControl:false, attributionControl:false }).setView([lat, lng], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(editMiniMap);
+    editMiniMarker = L.marker([lat, lng], { draggable:true }).addTo(editMiniMap);
+    editMiniMarker.on('dragend', () => {
+      const p = editMiniMarker.getLatLng();
+      editLat = p.lat; editLng = p.lng;
+      fillEditTownFromLatLng(p.lat, p.lng);
+    });
+    editMiniMap.on('click', (e) => {
+      editMiniMarker.setLatLng(e.latlng);
+      editLat = e.latlng.lat; editLng = e.latlng.lng;
+      fillEditTownFromLatLng(e.latlng.lat, e.latlng.lng);
+    });
+  } else {
+    editMiniMap.setView([lat, lng], 16);
+    editMiniMarker.setLatLng([lat, lng]);
+  }
+  setTimeout(() => editMiniMap.invalidateSize(), 200);
+}
+
+function openEditModal(id){
+  const r = myReports.find(x => x.id === id);
+  if(!r) return;
+
+  editTownGeocodeToken++; // 前回開いていた編集の自動取得応答を無効化
+  editingId = id;
+  editCategory = r.category || null;
+  editLat = typeof r.lat === 'number' ? r.lat : null;
+  editLng = typeof r.lng === 'number' ? r.lng : null;
+  editPhotoDataUrl = undefined;
+
+  editCatGrid.querySelectorAll('.cat-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === editCategory));
+  editBulkyToggle.checked = !!r.isBulky;
+  editTownInput.value = r.town || '';
+  if(editTownStatus){
+    editTownStatus.textContent = '';
+    editTownStatus.classList.remove('ok');
+  }
+  editMemoInput.value = r.memo || '';
+  editMemoCount.textContent = (r.memo || '').length;
+
+  editPhotoInput.value = '';
+  editPhotoPreview.style.display = 'none';
+  editPhotoHint.style.display = 'flex';
+  editPhotoRemoveBtn.style.display = 'none';
+
+  db.collection('reportPhotos').doc(id).get().then(doc => {
+    if(editingId !== id) return; // モーダルが既に閉じられていたら無視
+    if(doc.exists && doc.data().imageBase64){
+      editPhotoPreview.src = doc.data().imageBase64;
+      editPhotoPreview.style.display = 'block';
+      editPhotoHint.style.display = 'none';
+      editPhotoRemoveBtn.style.display = 'flex';
+    }
+  }).catch(() => {});
+
+  editOverlay.classList.add('show');
+  if(editLat !== null && editLng !== null){
+    setTimeout(() => ensureEditMiniMap(editLat, editLng), 60);
+  }
+}
+
+function closeEditModal(){
+  editOverlay.classList.remove('show');
+  editingId = null;
+}
+
+editCloseBtn.addEventListener('click', closeEditModal);
+editCancelBtn.addEventListener('click', closeEditModal);
+
+editCatGrid.addEventListener('click', (e) => {
+  const btn = e.target.closest('.cat-btn');
+  if(!btn) return;
+  editCatGrid.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  editCategory = btn.dataset.cat;
+});
+
+editMemoInput.addEventListener('input', () => {
+  editMemoCount.textContent = editMemoInput.value.length;
+});
+
+/* 写真の差し替え（発見する ページと同じリサイズ設定） */
+function resizeImageToDataURL(file, maxSize = 720, quality = 0.75){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('ファイルの読み込みに失敗しました'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('画像として読み込めませんでした'));
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if(w > h && w > maxSize){ h = Math.round(h * maxSize / w); w = maxSize; }
+        else if(h > maxSize){ w = Math.round(w * maxSize / h); h = maxSize; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+editPhotoZone.addEventListener('click', () => editPhotoInput.click());
+editPhotoRemoveBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  editPhotoDataUrl = null; // 削除フラグ
+  editPhotoInput.value = '';
+  editPhotoPreview.style.display = 'none';
+  editPhotoHint.style.display = 'flex';
+  editPhotoRemoveBtn.style.display = 'none';
+});
+
+editPhotoInput.addEventListener('change', async () => {
+  const file = editPhotoInput.files && editPhotoInput.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('image/')){
+    alert('画像ファイルを選んでください。');
+    return;
+  }
+  try{
+    editPhotoDataUrl = await resizeImageToDataURL(file);
+    editPhotoPreview.src = editPhotoDataUrl;
+    editPhotoPreview.style.display = 'block';
+    editPhotoHint.style.display = 'none';
+    editPhotoRemoveBtn.style.display = 'flex';
+  }catch(err){
+    console.error('写真の処理に失敗しました', err);
+    alert('写真を読み込めませんでした。別の画像でお試しください。');
+  }
+});
+
+editSaveBtn.addEventListener('click', async () => {
+  if(!editingId) return;
+  if(!editCategory){
+    alert('ゴミの種類を選んでください。');
+    return;
+  }
+
+  const r = myReports.find(x => x.id === editingId);
+  if(!r) return;
+
+  editSaveBtn.disabled = true;
+  editSaveBtn.textContent = '保存しています…';
+
+  const updateData = {
+    category: editCategory,
+    isBulky: !!editBulkyToggle.checked,
+    town: editTownInput.value.trim() || null,
+    memo: editMemoInput.value.trim()
+  };
+  if(typeof editLat === 'number' && typeof editLng === 'number'){
+    updateData.lat = editLat;
+    updateData.lng = editLng;
+  }
+
+  /* ---------------------------------------------------------------
+     ①本体の更新（reports）。これが編集保存の本質なので、失敗したら
+     ここで中断してエラー原因が分かる形で知らせる。
+     --------------------------------------------------------------- */
+  try{
+    await db.collection('reports').doc(editingId).update(updateData);
+  }catch(err){
+    console.error('更新に失敗しました', err);
+    const code = err && err.code ? err.code : '';
+    const msg  = err && err.message ? err.message : String(err);
+    alert('更新に失敗しました。もう一度お試しください。\n[' + code + '] ' + msg);
+    editSaveBtn.disabled = false;
+    editSaveBtn.textContent = '保存する';
+    return;
+  }
+
+  /* ---------------------------------------------------------------
+     ②写真の差し替え・削除、③回収数の増減調整は付随処理。
+     ①が既に成功しているので、ここで失敗しても編集自体は
+     成功として扱う（コンソールに警告だけ残す）。
+     --------------------------------------------------------------- */
+  if(editPhotoDataUrl === null){
+    try{
+      await db.collection('reportPhotos').doc(editingId).delete();
+    }catch(err){
+      console.warn('写真の削除に失敗しました（本体の更新は完了済み）', err);
+    }
+  } else if(typeof editPhotoDataUrl === 'string'){
+    try{
+      await db.collection('reportPhotos').doc(editingId).set({
+        imageBase64: editPhotoDataUrl,
+        uid: currentUser.uid,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }catch(err){
+      console.warn('写真の保存に失敗しました（本体の更新は完了済み）', err);
+    }
+  }
+
+  // 回収フラグが変化した場合のみ totalCollected を調整する
+  const wasBulky = !!r.isBulky;
+  const nowBulky = !!editBulkyToggle.checked;
+  if(wasBulky !== nowBulky){
+    try{
+      await db.collection('users').doc(currentUser.uid).set({
+        totalCollected: firebase.firestore.FieldValue.increment(nowBulky ? 1 : -1)
+      }, { merge: true });
+    }catch(err){
+      console.warn('回収数の調整に失敗しました（本体の更新は完了済み）', err);
+    }
+  }
+
+  // ローカルの一覧データを更新し、フィルター条件を保ったまま一覧全体を再描画する
+  // （カテゴリ変更で絞り込み対象から外れる/入るケースがあるため、部分置換ではなく全体再描画にする）
+  Object.assign(r, updateData);
+  renderHistoryList();
+
+  closeEditModal();
+  editSaveBtn.disabled = false;
+  editSaveBtn.textContent = '保存する';
+});
+
+/* ---------------------------------------------------------------------
+   認証チェック
+   --------------------------------------------------------------------- */
+let resolved = false;
+auth.onAuthStateChanged(async (user) => {
+  if(resolved) return;
+  resolved = true;
+  if(!user){
+    window.location.href = LOGIN_PAGE;
+    return;
+  }
+  currentUser = user;
+  overlay.style.opacity = '0';
+  setTimeout(() => overlay.style.display = 'none', 350);
+  await loadHistory();     // myReports（発見総数）を確定させてから
+  await loadStampState();  // スタンプの進捗を計算・描画する
+});
+</script>
+</body>
+</html>
